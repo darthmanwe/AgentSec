@@ -1,0 +1,536 @@
+{
+  "_comment": [
+    "Trusted tool registry (AS-013). This file is authoritative; an MCP server's",
+    "self-description is not. A server announcing its own risk levels is untrusted",
+    "input - exactly the channel a poisoned server would use to describe its",
+    "destructive operation as a harmless read.",
+    "",
+    "Every entry is enumerated. No wildcards, no patterns, no defaults: a tool that",
+    "is not listed here cannot be invoked, and an operation that is not listed for",
+    "its tool cannot be invoked either.",
+    "",
+    "The set of tool.operation pairs here must stay consistent with",
+    "policy/agentsec/authz.rego. tests/test_registry.py asserts that."
+  ],
+  "version": "1.0.0",
+  "entries": [
+    {
+      "tool": "fixture_repo",
+      "operation": "list_files",
+      "description": "List files in an assigned fixture repository.",
+      "risk_class": "read_only",
+      "resource_schemes": ["fixture"],
+      "required_scopes": ["repo:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 10.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"path": {"type": "string", "maxLength": 512}},
+        "required": ["path"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "fixture_repo",
+      "operation": "read_file",
+      "description": "Read one file from an assigned fixture repository.",
+      "risk_class": "read_only",
+      "resource_schemes": ["fixture"],
+      "required_scopes": ["repo:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 10.0,
+      "max_result_bytes": 1048576,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"path": {"type": "string", "maxLength": 512}},
+        "required": ["path"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "fixture_repo",
+      "operation": "search_code",
+      "description": "Search an assigned fixture repository for a literal string.",
+      "risk_class": "read_only",
+      "resource_schemes": ["fixture"],
+      "required_scopes": ["repo:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 20.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string", "maxLength": 256},
+          "max_results": {"type": "integer", "minimum": 1, "maximum": 200}
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "vuln_intel",
+      "operation": "lookup_package",
+      "description": "Look up known vulnerabilities for a package version in the pinned snapshot.",
+      "risk_class": "read_only",
+      "resource_schemes": ["vuln"],
+      "required_scopes": ["vuln:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 10.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {
+          "ecosystem": {"type": "string", "maxLength": 32},
+          "name": {"type": "string", "maxLength": 128},
+          "version": {"type": "string", "maxLength": 64}
+        },
+        "required": ["ecosystem", "name", "version"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "vuln_intel",
+      "operation": "lookup_cve",
+      "description": "Look up a CVE record in the pinned offline snapshot.",
+      "risk_class": "read_only",
+      "resource_schemes": ["vuln"],
+      "required_scopes": ["vuln:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 10.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"cve_id": {"type": "string", "pattern": "^CVE-[0-9]{4}-[0-9]{4,}$"}},
+        "required": ["cve_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "vuln_intel",
+      "operation": "lookup_advisory",
+      "description": "Look up a security advisory in the pinned offline snapshot.",
+      "risk_class": "read_only",
+      "resource_schemes": ["vuln"],
+      "required_scopes": ["vuln:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 10.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"advisory_id": {"type": "string", "maxLength": 64}},
+        "required": ["advisory_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "fake_cloud",
+      "operation": "list_resources",
+      "description": "List synthetic cloud resources.",
+      "risk_class": "read_only",
+      "resource_schemes": ["cloud"],
+      "required_scopes": ["cloud:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 10.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"resource_type": {"type": "string", "maxLength": 64}},
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "fake_cloud",
+      "operation": "get_resource",
+      "description": "Read one synthetic cloud resource.",
+      "risk_class": "read_only",
+      "resource_schemes": ["cloud"],
+      "required_scopes": ["cloud:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 10.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"resource_id": {"type": "string", "maxLength": 256}},
+        "required": ["resource_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "fake_cloud",
+      "operation": "read_iam_policy",
+      "description": "Read a synthetic IAM policy document.",
+      "risk_class": "read_only",
+      "resource_schemes": ["cloud"],
+      "required_scopes": ["cloud:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 10.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"resource_id": {"type": "string", "maxLength": 256}},
+        "required": ["resource_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "fake_cloud",
+      "operation": "read_security_group",
+      "description": "Read a synthetic security group definition.",
+      "risk_class": "read_only",
+      "resource_schemes": ["cloud"],
+      "required_scopes": ["cloud:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 10.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"resource_id": {"type": "string", "maxLength": 256}},
+        "required": ["resource_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "fake_cloud",
+      "operation": "read_bucket_policy",
+      "description": "Read a synthetic object-store bucket policy.",
+      "risk_class": "read_only",
+      "resource_schemes": ["cloud"],
+      "required_scopes": ["cloud:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 10.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"resource_id": {"type": "string", "maxLength": 256}},
+        "required": ["resource_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "fake_cloud",
+      "operation": "apply_remediation",
+      "description": "Apply a proposed remediation to a synthetic cloud resource.",
+      "risk_class": "irreversible",
+      "resource_schemes": ["cloud"],
+      "required_scopes": ["cloud:write"],
+      "requires_approval": true,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 30.0,
+      "max_result_bytes": 65536,
+      "argument_schema": {
+        "type": "object",
+        "properties": {
+          "resource_id": {"type": "string", "maxLength": 256},
+          "remediation_id": {"type": "string", "maxLength": 128}
+        },
+        "required": ["resource_id", "remediation_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "fake_jira",
+      "operation": "search",
+      "description": "Search local ticket records.",
+      "risk_class": "read_only",
+      "resource_schemes": ["jira"],
+      "required_scopes": ["jira:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 10.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"query": {"type": "string", "maxLength": 256}},
+        "required": ["query"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "fake_jira",
+      "operation": "read_issue",
+      "description": "Read one local ticket record.",
+      "risk_class": "read_only",
+      "resource_schemes": ["jira"],
+      "required_scopes": ["jira:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 10.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"issue_key": {"type": "string", "maxLength": 64}},
+        "required": ["issue_key"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "fake_jira",
+      "operation": "create_issue",
+      "description": "Create a local ticket. Approval-gated, idempotent by operation key.",
+      "risk_class": "high_risk_write",
+      "resource_schemes": ["jira"],
+      "required_scopes": ["jira:write"],
+      "requires_approval": true,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 30.0,
+      "max_result_bytes": 65536,
+      "argument_schema": {
+        "type": "object",
+        "properties": {
+          "project": {"type": "string", "maxLength": 32},
+          "summary": {"type": "string", "maxLength": 255},
+          "description": {"type": "string", "maxLength": 8192}
+        },
+        "required": ["project", "summary"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "fake_jira",
+      "operation": "comment",
+      "description": "Comment on a local ticket. Approval-gated.",
+      "risk_class": "low_risk_write",
+      "resource_schemes": ["jira"],
+      "required_scopes": ["jira:write"],
+      "requires_approval": true,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 30.0,
+      "max_result_bytes": 65536,
+      "argument_schema": {
+        "type": "object",
+        "properties": {
+          "issue_key": {"type": "string", "maxLength": 64},
+          "body": {"type": "string", "maxLength": 8192}
+        },
+        "required": ["issue_key", "body"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "github",
+      "operation": "read_file",
+      "description": "Read a file from an allowlisted GitHub repository.",
+      "risk_class": "read_only",
+      "resource_schemes": ["github"],
+      "required_scopes": ["github:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 20.0,
+      "max_result_bytes": 1048576,
+      "argument_schema": {
+        "type": "object",
+        "properties": {
+          "path": {"type": "string", "maxLength": 512},
+          "ref": {"type": "string", "maxLength": 128}
+        },
+        "required": ["path"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "github",
+      "operation": "search_code",
+      "description": "Search code in an allowlisted GitHub repository.",
+      "risk_class": "read_only",
+      "resource_schemes": ["github"],
+      "required_scopes": ["github:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 20.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"query": {"type": "string", "maxLength": 256}},
+        "required": ["query"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "github",
+      "operation": "get_diff",
+      "description": "Read the diff of a pull request in an allowlisted repository.",
+      "risk_class": "read_only",
+      "resource_schemes": ["github"],
+      "required_scopes": ["github:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 20.0,
+      "max_result_bytes": 1048576,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"pull_number": {"type": "integer", "minimum": 1}},
+        "required": ["pull_number"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "github",
+      "operation": "get_pull_request",
+      "description": "Read pull request metadata from an allowlisted repository.",
+      "risk_class": "read_only",
+      "resource_schemes": ["github"],
+      "required_scopes": ["github:read"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 20.0,
+      "max_result_bytes": 262144,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"pull_number": {"type": "integer", "minimum": 1}},
+        "required": ["pull_number"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "github",
+      "operation": "comment_pull_request",
+      "description": "Comment on a pull request. Approval-gated; at-most-once with reconciliation.",
+      "risk_class": "high_risk_write",
+      "resource_schemes": ["github"],
+      "required_scopes": ["github:comment"],
+      "requires_approval": true,
+      "idempotent": false,
+      "result_trust": "untrusted",
+      "timeout_seconds": 30.0,
+      "max_result_bytes": 65536,
+      "argument_schema": {
+        "type": "object",
+        "properties": {
+          "pull_number": {"type": "integer", "minimum": 1},
+          "body": {"type": "string", "maxLength": 65536}
+        },
+        "required": ["pull_number", "body"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "semgrep",
+      "operation": "scan_repository",
+      "description": "Run an allowlisted Semgrep ruleset over a workspace, inside the sandbox.",
+      "risk_class": "read_only",
+      "resource_schemes": ["fixture", "github"],
+      "required_scopes": ["scan:run"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 180.0,
+      "max_result_bytes": 4194304,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"ruleset_id": {"type": "string", "maxLength": 64}},
+        "required": ["ruleset_id"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "semgrep",
+      "operation": "scan_path",
+      "description": "Run an allowlisted Semgrep ruleset over one path, inside the sandbox.",
+      "risk_class": "read_only",
+      "resource_schemes": ["fixture", "github"],
+      "required_scopes": ["scan:run"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 120.0,
+      "max_result_bytes": 4194304,
+      "argument_schema": {
+        "type": "object",
+        "properties": {
+          "ruleset_id": {"type": "string", "maxLength": 64},
+          "path": {"type": "string", "maxLength": 512}
+        },
+        "required": ["ruleset_id", "path"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "trivy",
+      "operation": "scan_filesystem",
+      "description": "Scan a workspace filesystem with the pinned Trivy database, inside the sandbox.",
+      "risk_class": "read_only",
+      "resource_schemes": ["fixture", "github"],
+      "required_scopes": ["scan:run"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 180.0,
+      "max_result_bytes": 4194304,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"path": {"type": "string", "maxLength": 512}},
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "trivy",
+      "operation": "scan_dependency_manifest",
+      "description": "Scan a dependency manifest with the pinned Trivy database.",
+      "risk_class": "read_only",
+      "resource_schemes": ["fixture", "github"],
+      "required_scopes": ["scan:run"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 120.0,
+      "max_result_bytes": 4194304,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"path": {"type": "string", "maxLength": 512}},
+        "required": ["path"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "tool": "trivy",
+      "operation": "scan_iac",
+      "description": "Scan infrastructure-as-code definitions with the pinned Trivy checks.",
+      "risk_class": "read_only",
+      "resource_schemes": ["fixture", "github"],
+      "required_scopes": ["scan:run"],
+      "requires_approval": false,
+      "idempotent": true,
+      "result_trust": "untrusted",
+      "timeout_seconds": 120.0,
+      "max_result_bytes": 4194304,
+      "argument_schema": {
+        "type": "object",
+        "properties": {"path": {"type": "string", "maxLength": 512}},
+        "required": ["path"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
