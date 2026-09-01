@@ -15,9 +15,12 @@ classifiers = [
 ]
 
 # Runtime dependencies are added by the issue that first needs them, never in
-# advance. AS-001 deliberately has none: no API, DB, LLM, Temporal, OPA or MCP
-# yet. Speculative dependencies are how a "minimal foundation" stops being one.
-dependencies = []
+# advance. Speculative dependencies are how a "minimal foundation" stops being one.
+dependencies = [
+    # AS-002: typed configuration with type-driven secret redaction.
+    "pydantic==2.13.1",
+    "pydantic-settings==2.15.0",
+]
 
 [dependency-groups]
 dev = [

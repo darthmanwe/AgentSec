@@ -25,14 +25,16 @@ def test_version_matches_pyproject() -> None:
     assert data["project"]["version"] == agentsec.__version__
 
 
-def test_no_runtime_dependencies_yet() -> None:
-    """AS-001 is a foundation issue: dependencies arrive with the issue that needs them.
+def test_runtime_dependencies_are_pinned_exactly() -> None:
+    """Every runtime dependency is pinned to an exact version.
 
-    This guards against speculative dependency creep during early work. Delete or
-    amend it in the first issue that legitimately adds a runtime dependency.
+    Replaces the AS-001 "no dependencies yet" guard, which AS-002 legitimately retired
+    by adding pydantic. A published benchmark whose dependency versions float is not
+    reproducible, so ranges are rejected rather than discouraged.
     """
     data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    assert data["project"]["dependencies"] == []
+    for dep in data["project"]["dependencies"]:
+        assert "==" in dep, f"dependency is not pinned to an exact version: {dep}"
 
 
 def test_package_is_typed() -> None:
