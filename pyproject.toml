@@ -33,6 +33,8 @@ dependencies = [
     # AS-011: Ed25519 capability signing. The verifier holds only public material, so
     # the gateway cannot mint what it verifies.
     "cryptography==46.0.4",
+    # AS-014: argument validation against the registry's schema, never the server's.
+    "jsonschema==4.26.0",
 ]
 
 [dependency-groups]
@@ -46,6 +48,9 @@ dev = [
     "aiosqlite==0.21.0",
     # Sync driver, used only by the migration integration tests.
     "psycopg2-binary==2.9.12",
+    # Type stubs. jsonschema validates the arguments that reach a backend, so mypy
+    # should see its signatures rather than treat them as Any.
+    "types-jsonschema==4.26.0.20260518",
 ]
 
 [build-system]
