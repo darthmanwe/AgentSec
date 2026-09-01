@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # CI runs with NO credentials. This is a security property, not a convenience:
+  # the authorization kernel must be provable without a model, and the evaluation
+  # must have a deterministic offline path. A test that needs a key belongs behind
+  # the `live` marker and does not run here.
+  ANTHROPIC_API_KEY: ""
+  AGENTSEC_MODE: "eval"
+
+jobs:
+  quality:
+    name: lint / typecheck / test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Lint
+        run: uv run ruff check . --output-format github
+
+      - name: Format check
+        run: uv run ruff format --check .
+
+      - name: Typecheck
+        run: uv run mypy src
+
+      - name: Tests
+        # `live` is excluded explicitly rather than by omission, so that adding a
+        # credential-requiring test cannot silently start costing money in CI.
+        run: uv run pytest -q -m "not live" --cov --cov-report=term-missing
+
+  package:
+    name: execution package integrity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Validate backlog
+        # Verifies manifest hashes, dependency resolution, acyclicity, and that the
+        # execution order is a valid topological order. Also catches CRLF damage:
+        # the manifest hashes files on disk, so a line-ending regression fails here.
+        run: uv run python scripts/validate_package.py
+
+  no-credential-leak:
+    name: no credentials required
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Authorization kernel runs with no model configured
+        # The S1 gate, enforced on every commit: every authorization invariant must
+        # hold with no API key present. If this job ever needs a secret to pass, the
+        # control plane has grown a dependency on the thing it is meant to constrain.
+        #
+        # pytest exits 5 when no test matches the marker. Before S1 lands that is the
+        # expected state, so it is tolerated *and announced* rather than hidden — a
+        # silent pass here would be indistinguishable from the suite having vanished.
+        env:
+          ANTHROPIC_API_KEY: ""
+        run: |
+          set +e
+          uv run pytest -q -m "authz" --no-header
+          status=$?
+          set -e
+          if [ "$status" -eq 5 ]; then
+            echo "::warning title=No authz tests::No tests are marked 'authz' yet (expected before S1 completes)."
+            exit 0
+          fi
+          exit "$status"

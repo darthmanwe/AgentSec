@@ -30,23 +30,63 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 PACKAGE = REPO_ROOT / "docs" / "execution-package"
 ISSUES = PACKAGE / "issues"
 
+# DFS colours for the cycle check.
+_WHITE, _GREY, _BLACK = 0, 1, 2
+
 # The canonical execution order. This list is the authority on sequencing; the
 # dependency graph is the authority on legality. A change here that violates the
 # graph is rejected by check_order().
 ORDER: list[str] = [
     # S0 - Ground rules
-    "AS-000", "AS-001", "AS-002", "AS-003", "AS-004", "AS-005",
+    "AS-000",
+    "AS-001",
+    "AS-002",
+    "AS-003",
+    "AS-004",
+    "AS-005",
     # S1 - Authorization kernel
-    "AS-006", "AS-007", "AS-008", "AS-009", "AS-010", "AS-011", "AS-012",
+    "AS-006",
+    "AS-007",
+    "AS-008",
+    "AS-009",
+    "AS-010",
+    "AS-011",
+    "AS-012",
     # S2 - Governed tool execution
-    "AS-013", "AS-014", "AS-015", "AS-016", "AS-017", "AS-018",
-    "AS-019", "AS-020", "AS-021", "AS-022", "AS-023",
-    "AS-031A", "AS-029", "AS-030", "AS-031B", "AS-032", "AS-033",
+    "AS-013",
+    "AS-014",
+    "AS-015",
+    "AS-016",
+    "AS-017",
+    "AS-018",
+    "AS-019",
+    "AS-020",
+    "AS-021",
+    "AS-022",
+    "AS-023",
+    "AS-031A",
+    "AS-029",
+    "AS-030",
+    "AS-031B",
+    "AS-032",
+    "AS-033",
     # S3 - Agent and adversarial evaluation
-    "AS-024", "AS-027", "AS-025", "AS-026", "AS-028", "AS-028B",
-    "AS-034", "AS-035", "AS-036", "AS-037", "AS-039", "AS-038", "AS-040",
+    "AS-024",
+    "AS-027",
+    "AS-025",
+    "AS-026",
+    "AS-028",
+    "AS-028B",
+    "AS-034",
+    "AS-035",
+    "AS-036",
+    "AS-037",
+    "AS-039",
+    "AS-038",
+    "AS-040",
     # S4 - Observability and release
-    "AS-041", "AS-042",
+    "AS-041",
+    "AS-042",
 ]
 
 SLICES: list[tuple[str, str]] = [
@@ -73,9 +113,11 @@ for _issue in ORDER:
 
 
 class Issue:
-    __slots__ = ("id", "title", "milestone", "deps", "path")
+    __slots__ = ("deps", "id", "milestone", "path", "title")
 
-    def __init__(self, issue_id: str, title: str, milestone: str, deps: list[str], path: pathlib.Path):
+    def __init__(
+        self, issue_id: str, title: str, milestone: str, deps: list[str], path: pathlib.Path
+    ):
         self.id = issue_id
         self.title = title
         self.milestone = milestone
@@ -119,6 +161,7 @@ def load_issues() -> dict[str, Issue]:
 
 # --------------------------------------------------------------------------- checks
 
+
 def check_deps(issues: dict[str, Issue], errors: list[str]) -> None:
     for issue in issues.values():
         for dep in issue.deps:
@@ -129,23 +172,26 @@ def check_deps(issues: dict[str, Issue], errors: list[str]) -> None:
 
 
 def check_acyclic(issues: dict[str, Issue], errors: list[str]) -> None:
-    WHITE, GREY, BLACK = 0, 1, 2
-    colour = dict.fromkeys(issues, WHITE)
+    colour = dict.fromkeys(issues, _WHITE)
 
     def visit(node: str, stack: list[str]) -> None:
-        colour[node] = GREY
+        colour[node] = _GREY
         for dep in issues[node].deps:
             if dep not in issues:
                 continue
-            if colour[dep] == GREY:
-                cycle = " -> ".join(stack[stack.index(dep):] + [dep]) if dep in stack else f"{node} -> {dep}"
+            if colour[dep] == _GREY:
+                cycle = (
+                    " -> ".join([*stack[stack.index(dep) :], dep])
+                    if dep in stack
+                    else f"{node} -> {dep}"
+                )
                 errors.append(f"dependency cycle: {cycle}")
-            elif colour[dep] == WHITE:
-                visit(dep, stack + [dep])
-        colour[node] = BLACK
+            elif colour[dep] == _WHITE:
+                visit(dep, [*stack, dep])
+        colour[node] = _BLACK
 
     for node in issues:
-        if colour[node] == WHITE:
+        if colour[node] == _WHITE:
             visit(node, [node])
 
 
@@ -208,21 +254,24 @@ def check_csv(issues: dict[str, Issue], errors: list[str]) -> None:
 
 # ---------------------------------------------------------------------- regeneration
 
+
 def build_csv(issues: dict[str, Issue]) -> str:
     buf = io.StringIO()
     writer = csv.writer(buf, lineterminator="\n")
     writer.writerow(["Order", "Issue", "Title", "Slice", "Milestone", "Dependencies", "File"])
     for i, issue_id in enumerate(ORDER, start=1):
         issue = issues[issue_id]
-        writer.writerow([
-            i,
-            issue.id,
-            issue.title,
-            SLICE_OF[issue.id],
-            issue.milestone,
-            " ".join(issue.deps),
-            f"issues/{issue.path.name}",
-        ])
+        writer.writerow(
+            [
+                i,
+                issue.id,
+                issue.title,
+                SLICE_OF[issue.id],
+                issue.milestone,
+                " ".join(issue.deps),
+                f"issues/{issue.path.name}",
+            ]
+        )
     return buf.getvalue()
 
 
@@ -320,7 +369,10 @@ def main() -> int:
             print(f"  - {err}", file=sys.stderr)
         return 1
 
-    print(f"OK: {len(issues)} issues, dependencies resolve, graph acyclic, order valid, manifest matches")
+    print(
+        f"OK: {len(issues)} issues, dependencies resolve, "
+        "graph acyclic, order valid, manifest matches"
+    )
     return 0
 
 

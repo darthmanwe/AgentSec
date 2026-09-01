@@ -1,0 +1,125 @@
+[project]
+name = "agentsec"
+version = "0.1.0"
+description = "A policy-governed runtime for an LLM security agent: deterministic authorization around probabilistic reasoning."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Kutlu Mizrak" }]
+keywords = ["llm", "security", "authorization", "opa", "temporal", "mcp", "agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+
+# Runtime dependencies are added by the issue that first needs them, never in
+# advance. AS-001 deliberately has none: no API, DB, LLM, Temporal, OPA or MCP
+# yet. Speculative dependencies are how a "minimal foundation" stops being one.
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "ruff==0.15.2",
+    "mypy==1.19.1",
+    "pytest==9.0.1",
+    "pytest-asyncio==1.3.0",
+    "pytest-cov==7.0.0",
+    "taskipy==1.14.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentsec"]
+
+# --------------------------------------------------------------------------- tasks
+# `make` is not assumed to exist on the target platform. Every documented command
+# in the backlog goes through `uv run task <name>`, which works identically on
+# Windows, macOS and Linux.
+[tool.taskipy.tasks]
+lint = "ruff check ."
+format = "ruff format ."
+"format-check" = "ruff format --check ."
+typecheck = "mypy src"
+test = "pytest -q"
+check = "ruff check . && ruff format --check . && mypy src && pytest -q"
+"validate-package" = "python scripts/validate_package.py"
+"regen-package" = "python scripts/validate_package.py --regenerate"
+
+# --------------------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",      # pycodestyle
+    "F",           # pyflakes
+    "I",           # isort
+    "N",           # pep8-naming
+    "UP",          # pyupgrade
+    "B",           # bugbear
+    "A",           # builtins shadowing
+    "C4",          # comprehensions
+    "DTZ",         # naive datetimes - timestamps must be tz-aware
+    "T20",         # no print() - it corrupts MCP stdio streams
+    "SIM",         # simplify
+    "PTH",         # pathlib
+    "RUF",         # ruff-specific
+    "S",           # bandit
+    "ASYNC",       # async correctness
+]
+ignore = [
+    "S101",        # assert is fine, pytest depends on it
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests may use hardcoded fake secrets and subprocess calls; that is the point.
+"tests/**" = ["S105", "S106", "S107", "S603", "S607"]
+# The package tooling prints its report by design.
+"scripts/**" = ["T20"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["agentsec"]
+
+# --------------------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+warn_unreachable = true
+warn_no_return = true
+disallow_any_unimported = true
+show_error_codes = true
+pretty = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# --------------------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "--strict-markers --strict-config"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "authz: authorization kernel invariants; must pass with no LLM configured",
+    "sandbox: requires a working Docker daemon",
+    "integration: requires the docker compose stack to be up",
+    "live: spends real API credit; never runs in CI",
+    "slow: takes more than a few seconds",
+]
+
+[tool.coverage.run]
+source = ["src/agentsec"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
