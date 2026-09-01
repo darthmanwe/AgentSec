@@ -17,13 +17,24 @@ from committed evaluation artifacts rather than typed in by hand.
 | Slice | Scope | State |
 |---|---|---|
 | Rev 0 | Execution package reconciliation, package validator, preflight | ✅ complete |
-| S0 | Threat model, bootstrap, config, logging, compose, schema | 🔨 in progress |
-| S1 | Authorization kernel (digest, OPA, approvals, capabilities) | ⬜ not started |
+| S0 | Threat model, bootstrap, config, logging, compose, schema | ✅ complete |
+| S1 | Authorization kernel (digest, OPA, approvals, capabilities) | ✅ complete |
 | S2 | MCP gateway, Temporal workflows, sandbox, scanners | ⬜ not started |
 | S3 | Planner, adversarial evaluation, ablation | ⬜ not started |
 | S4 | Observability, demo UI, release | ⬜ not started |
 
 Do not treat this as portfolio-ready before S3 completes.
+
+**What S1 being complete actually means:** the authorization kernel is built and
+verified independently of any model. 374 tests pass, of which 223 are marked `authz`
+and run in CI with `ANTHROPIC_API_KEY` empty. Policy denials, fail-closed behaviour on
+an unreachable engine, exact-action approval binding, argument mutation after approval,
+capability expiry, replay, and cross-action reuse are each covered by negative tests,
+and an aggregate sweep asserts that zero attack scenarios reach execution.
+
+What does *not* exist yet: the MCP gateway, so nothing dispatches to a backend; the
+planner, so no model has ever proposed an action here; and the evaluation, so there are
+no benchmark numbers to report.
 
 ---
 
