@@ -162,6 +162,23 @@ async def session_scope(
         yield McpBackend(session, tool_name=tool_name)
 
 
+def _base_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    """Environment for a server subprocess.
+
+    Only what the interpreter needs to start, plus the server's own configuration. A
+    server does not inherit the parent's full environment, so a credential sitting in the
+    shell cannot be picked up by a fixture backend that has no business seeing it.
+    """
+    import os
+
+    return {
+        # PATH and the interpreter's own variables must survive, or the subprocess cannot
+        # import its dependencies on Windows.
+        **{k: v for k, v in os.environ.items() if k in {"PATH", "SYSTEMROOT", "PYTHONPATH"}},
+        **(extra or {}),
+    }
+
+
 def fixture_repo_spec(
     corpus_root: pathlib.Path, assigned_repo: str, *, extra_env: dict[str, str] | None = None
 ) -> McpServerSpec:
@@ -170,17 +187,43 @@ def fixture_repo_spec(
     The assignment is passed through the environment and enforced by the server at
     startup, so a process cannot be talked into serving a different repository later.
     """
-    import os
-
-    env = {
-        # PATH and the interpreter's own variables must survive, or the subprocess
-        # cannot import its dependencies on Windows.
-        **{k: v for k, v in os.environ.items() if k in {"PATH", "SYSTEMROOT", "PYTHONPATH"}},
-        "AGENTSEC_FIXTURE_ROOT": str(corpus_root),
-        "AGENTSEC_ASSIGNED_REPO": assigned_repo,
-        **(extra_env or {}),
-    }
+    env = _base_env(
+        {
+            "AGENTSEC_FIXTURE_ROOT": str(corpus_root),
+            "AGENTSEC_ASSIGNED_REPO": assigned_repo,
+            **(extra_env or {}),
+        }
+    )
     return McpServerSpec.python_module("agentsec.mcp_servers.fixture_repo", env=env)
+
+
+def vuln_intel_spec(snapshot_path: pathlib.Path) -> McpServerSpec:
+    """Spec for the offline vulnerability server, pinned to one snapshot."""
+    return McpServerSpec.python_module(
+        "agentsec.mcp_servers.vuln_intel",
+        env=_base_env({"AGENTSEC_VULN_SNAPSHOT": str(snapshot_path)}),
+    )
+
+
+def fake_cloud_spec(state_path: pathlib.Path) -> McpServerSpec:
+    """Spec for the synthetic cloud server.
+
+    One process per evaluation case: the server holds mutation state in memory, and a
+    case inheriting the previous one's mutations would make the benchmark measure ordering
+    rather than behaviour.
+    """
+    return McpServerSpec.python_module(
+        "agentsec.mcp_servers.fake_cloud",
+        env=_base_env({"AGENTSEC_CLOUD_STATE": str(state_path)}),
+    )
+
+
+def fake_jira_spec(state_path: pathlib.Path) -> McpServerSpec:
+    """Spec for the local ticket server. One process per evaluation case, as above."""
+    return McpServerSpec.python_module(
+        "agentsec.mcp_servers.fake_jira",
+        env=_base_env({"AGENTSEC_JIRA_STATE": str(state_path)}),
+    )
 
 
 __all__ = [
@@ -188,6 +231,9 @@ __all__ = [
     "McpBackendError",
     "McpServerSpec",
     "extract_payload",
+    "fake_cloud_spec",
+    "fake_jira_spec",
     "fixture_repo_spec",
     "session_scope",
+    "vuln_intel_spec",
 ]

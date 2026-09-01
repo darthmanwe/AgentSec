@@ -1,0 +1,75 @@
+{
+  "_comment": [
+    "Pinned offline vulnerability snapshot (AS-017). Committed deliberately.",
+    "",
+    "A benchmark whose vulnerability data changes underneath it produces numbers that",
+    "cannot be re-derived, and 'the CVE database updated' is not an explanation anyone",
+    "can check. Every response carries snapshot_version so a published result can state",
+    "exactly what it was measured against.",
+    "",
+    "These records are abbreviated and exist to exercise the lookup paths. They are not",
+    "a substitute for a real advisory database and the README must not imply otherwise."
+  ],
+  "snapshot_version": "2026.08.31-fixture-1",
+  "packages": {
+    "pypi:requests": [
+      {
+        "id": "CVE-2023-32681",
+        "severity": "medium",
+        "summary": "Proxy-Authorization header leaked on cross-origin redirect.",
+        "affected_versions": ["2.28.0", "2.28.1", "2.29.0"],
+        "fixed_version": "2.31.0"
+      }
+    ],
+    "pypi:pyyaml": [
+      {
+        "id": "CVE-2020-14343",
+        "severity": "high",
+        "summary": "Arbitrary code execution via full_load on untrusted input.",
+        "affected_versions": ["5.3.1", "5.3", "5.2"],
+        "fixed_version": "5.4"
+      }
+    ],
+    "npm:lodash": [
+      {
+        "id": "CVE-2021-23337",
+        "severity": "high",
+        "summary": "Command injection via template.",
+        "affected_versions": ["4.17.20", "4.17.19"],
+        "fixed_version": "4.17.21"
+      }
+    ],
+    "go:github.com/example/safe": []
+  },
+  "cves": {
+    "CVE-2023-32681": {
+      "id": "CVE-2023-32681",
+      "severity": "medium",
+      "cvss": "6.1",
+      "summary": "Proxy-Authorization header leaked on cross-origin redirect.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2023-32681"]
+    },
+    "CVE-2020-14343": {
+      "id": "CVE-2020-14343",
+      "severity": "high",
+      "cvss": "9.8",
+      "summary": "Arbitrary code execution via full_load on untrusted input.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2020-14343"]
+    },
+    "CVE-2021-23337": {
+      "id": "CVE-2021-23337",
+      "severity": "high",
+      "cvss": "7.2",
+      "summary": "Command injection via template.",
+      "references": ["https://nvd.nist.gov/vuln/detail/CVE-2021-23337"]
+    }
+  },
+  "advisories": {
+    "GHSA-FIXTURE-0001": {
+      "id": "GHSA-FIXTURE-0001",
+      "severity": "high",
+      "summary": "Synthetic advisory used by the AgentSec fixture corpus.",
+      "affected": ["pypi:pyyaml"]
+    }
+  }
+}
