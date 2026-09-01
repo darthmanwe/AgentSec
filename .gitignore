@@ -1,0 +1,54 @@
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtualenvs. UV_PROJECT_ENVIRONMENT should point outside this tree entirely
+# (see scripts/preflight.ps1) because the repository lives under OneDrive and
+# syncing a venv is slow and lock-prone.
+.venv/
+venv/
+
+# --- tooling caches -------------------------------------------------------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- secrets and local config --------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+keys/
+
+# --- evaluation output ----------------------------------------------------
+# Generated benchmark artifacts. Published results are committed deliberately
+# under eval/results/published/, never swept in by a wildcard.
+eval/artifacts/
+eval/runs/
+!eval/results/published/
+
+# --- vendored scanner data ------------------------------------------------
+# Pinned Trivy DB snapshot is large; fetched by a task, not committed.
+.trivy-db/
+
+# --- local project status -------------------------------------------------
+# Working notes, access details, deploy specifics. Not for the public repo.
+project_status.md
+
+# --- OS / editor ----------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json

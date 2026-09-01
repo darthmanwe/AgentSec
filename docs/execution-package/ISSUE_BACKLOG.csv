@@ -1,0 +1,46 @@
+Order,Issue,Title,Slice,Milestone,Dependencies,File
+1,AS-000,Threat model and trust boundaries,S0,M0 Foundation,,issues/AS-000-threat-model.md
+2,AS-001,Bootstrap Python project and quality gates,S0,M0 Foundation,,issues/AS-001-project-bootstrap.md
+3,AS-002,Typed configuration and secret-safe settings,S0,M0 Foundation,AS-001,issues/AS-002-config-secrets.md
+4,AS-003,Structured logging and redaction,S0,M0 Foundation,AS-001 AS-002,issues/AS-003-structured-logging.md
+5,AS-004,Development Docker Compose stack,S0,M0 Foundation,AS-001 AS-002,issues/AS-004-dev-compose.md
+6,AS-005,PostgreSQL schema and migrations,S0,M0 Foundation,AS-002 AS-004,issues/AS-005-database-schema.md
+7,AS-006,Authorization domain models,S1,M1 Authorization,AS-001 AS-002,issues/AS-006-authorization-models.md
+8,AS-007,Canonical action normalization and digest,S1,M1 Authorization,AS-006,issues/AS-007-canonical-action-digest.md
+9,AS-008,OPA policy client with fail-closed semantics,S1,M1 Authorization,AS-004 AS-006,issues/AS-008-opa-client.md
+10,AS-009,Default-deny Rego policy bundle,S1,M1 Authorization,AS-008,issues/AS-009-rego-policy-bundle.md
+11,AS-010,Exact-action approval model,S1,M1 Authorization,AS-005 AS-007,issues/AS-010-approval-model.md
+12,AS-011,Short-lived scoped capability grants,S1,M1 Authorization,AS-007 AS-009 AS-010,issues/AS-011-capability-grants.md
+13,AS-012,Authorization security invariant suite,S1,M1 Authorization,AS-008 AS-009 AS-010 AS-011,issues/AS-012-authorization-invariants.md
+14,AS-013,MCP tool registry and risk metadata,S2,M2 MCP Gateway,AS-006 AS-009,issues/AS-013-tool-registry.md
+15,AS-014,MCP Gateway core authorization path,S2,M2 MCP Gateway,AS-011 AS-013,issues/AS-014-mcp-gateway-core.md
+16,AS-015,Fixture repository MCP server,S2,M2 MCP Gateway,AS-014,issues/AS-015-fixture-repository-tool.md
+17,AS-016,Fake cloud MCP server,S2,M2 MCP Gateway,AS-015,issues/AS-016-fake-cloud-tool.md
+18,AS-017,Offline vulnerability intelligence MCP server,S2,M2 MCP Gateway,AS-015,issues/AS-017-vulnerability-tool.md
+19,AS-018,Fake Jira MCP server,S2,M2 MCP Gateway,AS-015,issues/AS-018-fake-jira-tool.md
+20,AS-019,Temporal worker bootstrap,S2,M3 Temporal,AS-004 AS-005,issues/AS-019-temporal-worker.md
+21,AS-020,SecurityReviewWorkflow state machine skeleton,S2,M3 Temporal,AS-019 AS-005,issues/AS-020-security-review-workflow.md
+22,AS-021,Temporal approval signal/update integration,S2,M3 Temporal,AS-010 AS-020,issues/AS-021-temporal-approval.md
+23,AS-022,Workflow idempotency for side effects,S2,M3 Temporal,AS-007 AS-020 AS-016 AS-018,issues/AS-022-idempotent-side-effects.md
+24,AS-023,Temporal failure injection harness,S2,M3 Temporal,AS-020 AS-021 AS-022,issues/AS-023-failure-injection.md
+25,AS-031A,Ephemeral Docker sandbox foundation,S2,M5 Tools,AS-004,issues/AS-031A-sandbox-foundation.md
+26,AS-029,Typed Semgrep scanner adapter,S2,M5 Tools,AS-014 AS-015 AS-031A,issues/AS-029-semgrep-adapter.md
+27,AS-030,Typed Trivy scanner adapter,S2,M5 Tools,AS-014 AS-015 AS-031A,issues/AS-030-trivy-adapter.md
+28,AS-031B,Ephemeral Docker sandbox runner,S2,M5 Tools,AS-029 AS-030 AS-031A,issues/AS-031B-scanner-sandbox-integration.md
+29,AS-032,Sandbox abuse and containment tests,S2,M5 Tools,AS-031B,issues/AS-032-sandbox-security-tests.md
+30,AS-033,GitHub read adapter plus approval-gated PR comment,S2,M5 Tools,AS-014 AS-021 AS-022,issues/AS-033-github-adapter.md
+31,AS-024,LLM provider abstraction and usage accounting,S3,M4 Agent,AS-002 AS-005,issues/AS-024-llm-provider.md
+32,AS-027,Prompt registry and version governance,S3,M4 Agent,AS-024,issues/AS-027-prompt-governance.md
+33,AS-025,Typed agent state and context provenance,S3,M4 Agent,AS-006 AS-024,issues/AS-025-agent-context.md
+34,AS-026,LangGraph bounded planning subgraph,S3,M4 Agent,AS-013 AS-024 AS-025 AS-027,issues/AS-026-langgraph-planner.md
+35,AS-028,"Integrate planner with Temporal, authorization, and gateway",S3,M4 Agent,AS-020 AS-026 AS-014 AS-012,issues/AS-028-planner-workflow-integration.md
+36,AS-028B,Deterministic adversarial planner,S3,M4 Agent,AS-012 AS-014 AS-026 AS-028,issues/AS-028B-adversarial-planner.md
+37,AS-034,Build repository security fixture corpus and hidden ground truth,S3,M6 Evaluation,AS-015 AS-029 AS-030,issues/AS-034-repo-fixtures.md
+38,AS-035,Build indirect prompt-injection and poisoned-tool corpus,S3,M6 Evaluation,AS-025 AS-034 AS-016 AS-018,issues/AS-035-injection-corpus.md
+39,AS-036,Build unauthorized capability and approval attack corpus,S3,M6 Evaluation,AS-012 AS-016 AS-018 AS-033,issues/AS-036-privilege-hitl-corpus.md
+40,AS-037,Deterministic evaluation scorers,S3,M6 Evaluation,AS-034 AS-035 AS-036 AS-023,issues/AS-037-eval-scorers.md
+41,AS-039,Pre-register thresholds and protect against silent drift,S3,M6 Evaluation,AS-037,issues/AS-039-preregister-thresholds.md
+42,AS-038,Evaluation ablation runner,S3,M6 Evaluation,AS-028 AS-028B AS-031B AS-037 AS-039,issues/AS-038-ablation-runner.md
+43,AS-040,Full benchmark runner and generated reports,S3,M6 Evaluation,AS-035 AS-036 AS-038 AS-039,issues/AS-040-full-eval-reporting.md
+44,AS-041,"OpenTelemetry, Prometheus, Grafana, and audit replay",S4,M7 Hardening,AS-028 AS-040,issues/AS-041-observability.md
+45,AS-042,"Minimal demo UI, README hardening, and release gate",S4,M7 Hardening,AS-021 AS-040 AS-041,issues/AS-042-demo-ui-portfolio.md

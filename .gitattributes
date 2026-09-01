@@ -1,0 +1,33 @@
+# Normalise all text to LF in the repository and on checkout.
+#
+# This is a correctness requirement, not a style preference: the execution
+# package's MANIFEST.json stores SHA-256 hashes of files on disk. If Git
+# converted line endings per-platform, a fresh clone on Windows would produce
+# CRLF files whose hashes no longer match the manifest, and the package
+# validator would fail in CI and on every Windows checkout.
+#
+# The same reasoning applies to the canonical action digest golden fixtures and
+# to any committed evaluation artifact.
+
+* text=auto eol=lf
+
+# Windows-only scripts that must keep CRLF to run reliably under cmd.exe.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# PowerShell is fine with LF; keep it LF so hashes stay stable.
+*.ps1 text eol=lf
+
+# Binary: never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.db binary
+*.sqlite binary
+*.whl binary
