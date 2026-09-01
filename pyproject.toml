@@ -55,6 +55,10 @@ test = "pytest -q"
 check = "ruff check . && ruff format --check . && mypy src && pytest -q"
 "validate-package" = "python scripts/validate_package.py"
 "regen-package" = "python scripts/validate_package.py --regenerate"
+"opa-test" = "python scripts/toolbox.py opa test policy"
+"opa-check" = "python scripts/toolbox.py opa check --strict policy"
+"opa-fmt" = "python scripts/toolbox.py opa fmt --list policy"
+"compose-config" = "docker compose config --quiet"
 
 # --------------------------------------------------------------------------- ruff
 [tool.ruff]

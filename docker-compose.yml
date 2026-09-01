@@ -1,0 +1,183 @@
+# AgentSec development stack (AS-004).
+#
+# Images are pinned by DIGEST, not tag. scripts/images.py is the single source of
+# truth and tests/test_compose.py asserts the two agree, so this duplication cannot
+# drift. A mutable tag would mean a rebuilt image silently changes what a published
+# benchmark ran against.
+#
+# Resource limits are deliberate. WSL2 defaults to half the host's RAM and every
+# logical processor; a five-service stack plus scanner containers on a shared
+# workstation is how a machine ends up in swap. See scripts/preflight.ps1 -Fix.
+#
+#   docker compose up -d                      # core: postgres, opa, temporal
+#   docker compose --profile ui up -d         # + Temporal web UI
+#   docker compose --profile observability up -d   # + prometheus, grafana (AS-041)
+#
+# Credentials below are DEVELOPMENT ONLY and intentionally weak. They are committed
+# on purpose so the stack starts with no setup. Nothing here is ever used elsewhere.
+
+name: agentsec
+
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 10s
+  timeout: 5s
+  retries: 5
+  start_period: 20s
+
+services:
+  # --------------------------------------------------------------------- postgres
+  postgres:
+    image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    container_name: agentsec-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agentsec
+      POSTGRES_PASSWORD: devonly            # DEVELOPMENT ONLY
+      POSTGRES_DB: agentsec
+      # Temporal's auto-setup creates its own databases on this instance.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "pg_isready -U agentsec -d agentsec"]
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+
+  # -------------------------------------------------------------------------- opa
+  # Authorization decisions live outside the process that plans actions. An
+  # unreachable or malformed OPA is a DENY, never a fallback-allow (AS-008).
+  opa:
+    image: openpolicyagent/opa:1.20.1@sha256:39daf255ae7f25d81103f03a0c18308a50b7b5bb67907bed6166f70e24a970ff
+    container_name: agentsec-opa
+    restart: unless-stopped
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--diagnostic-addr=0.0.0.0:8282"    # health endpoints, separate from the API
+      - "--log-level=info"
+      - "--set=decision_logs.console=true"  # decisions are audit evidence
+      - "/policy"
+    ports:
+      - "8181:8181"
+    volumes:
+      # Read-only: the policy bundle is trusted input and the container must not be
+      # able to rewrite the rules it is enforcing.
+      - ./policy:/policy:ro
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "/opa", "version"]
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # --------------------------------------------------------------------- temporal
+  # NOTE: the published auto-setup image lags the Temporal source release. 1.31.2
+  # exists upstream but the highest auto-setup tag on Docker Hub is 1.29.7
+  # (verified 2026-08-31). Server 1.29.7 + Python SDK 1.32.0 is supported.
+  temporal:
+    image: temporalio/auto-setup:1.29.7@sha256:f14912b699cf73015ad5c4fc18d522d4b014db90e794039214dfb7c022c2644f
+    container_name: agentsec-temporal
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: agentsec
+      POSTGRES_PWD: devonly                 # DEVELOPMENT ONLY
+      POSTGRES_SEEDS: postgres
+      DBNAME: temporal
+      VISIBILITY_DBNAME: temporal_visibility
+      # Namespace the workflows land in. Created on first start by auto-setup.
+      DEFAULT_NAMESPACE: agentsec
+      DEFAULT_NAMESPACE_RETENTION: 72h
+    ports:
+      - "7233:7233"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "temporal:7233"]
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+
+  # ------------------------------------------------------------------ temporal ui
+  temporal-ui:
+    image: temporalio/ui:2.53.3@sha256:eef301146e60fad34b47adaecfae4149016e34b2d44ba94fca5fd8e5441f182a
+    container_name: agentsec-temporal-ui
+    profiles: ["ui"]
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_started
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+
+  # ------------------------------------------------------------- observability
+  # Behind a profile: not needed until AS-041, and S0-S2 should run three services
+  # rather than five.
+  prometheus:
+    image: prom/prometheus:v3.7.3@sha256:49214755b6153f90a597adcbff0252cc61069f8ab69ce8411285cd4a560e8038
+    container_name: agentsec-prometheus
+    profiles: ["observability"]
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+
+  grafana:
+    image: grafana/grafana:12.3.1@sha256:2175aaa91c96733d86d31cf270d5310b278654b03f5718c59de12a865380a31f
+    container_name: agentsec-grafana
+    profiles: ["observability"]
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: devonly   # DEVELOPMENT ONLY
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+
+volumes:
+  postgres-data:
+  prometheus-data:
+  grafana-data:
