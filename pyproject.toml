@@ -36,6 +36,7 @@ dependencies = [
     # AS-014: argument validation against the registry's schema, never the server's.
     "jsonschema==4.26.0",
     "mcp==2.1.1",
+    "temporalio==1.32.0",
 ]
 
 [dependency-groups]
