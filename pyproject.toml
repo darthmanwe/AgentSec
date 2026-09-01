@@ -30,6 +30,9 @@ dependencies = [
     "asyncpg==0.31.0",
     # AS-008: OPA policy client.
     "httpx==0.28.1",
+    # AS-011: Ed25519 capability signing. The verifier holds only public material, so
+    # the gateway cannot mint what it verifies.
+    "cryptography==46.0.4",
 ]
 
 [dependency-groups]
