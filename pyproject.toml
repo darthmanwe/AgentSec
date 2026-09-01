@@ -20,6 +20,9 @@ dependencies = [
     # AS-002: typed configuration with type-driven secret redaction.
     "pydantic==2.13.1",
     "pydantic-settings==2.15.0",
+    # AS-003: structured logging. The redactor is a processor in the chain, so no
+    # caller can forget it on the exception path.
+    "structlog==26.1.0",
 ]
 
 [dependency-groups]
