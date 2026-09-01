@@ -398,18 +398,29 @@ class CapabilityRedeemer:
         self._session = session
 
     async def redeem(self, claims: CapabilityClaims, *, operation_id: str) -> bool:
-        """Consume the grant. Returns False if it was already used."""
-        self._session.add(
-            CapabilityJtiUse(
-                jti=claims.jti,
-                operation_id=operation_id,
-                request_hash=claims.request_hash,
-            )
-        )
+        """Consume the grant. Returns False if it was already used.
+
+        The insert runs inside a **savepoint**. A plain ``session.rollback()`` on the
+        constraint violation would discard every other uncommitted change in the same
+        session - in practice the execution ledger entry written moments earlier by
+        AS-022, silently erasing the record of a completed side effect while reporting
+        only that a replay was rejected. Found by the AS-022 tests, which counted logical
+        effects and got zero.
+
+        Scoping the rollback to this statement keeps the failure local, which is the only
+        thing it should affect.
+        """
         try:
-            await self._session.flush()
+            async with self._session.begin_nested():
+                self._session.add(
+                    CapabilityJtiUse(
+                        jti=claims.jti,
+                        operation_id=operation_id,
+                        request_hash=claims.request_hash,
+                    )
+                )
+                await self._session.flush()
         except IntegrityError:
-            await self._session.rollback()
             log.warning("capability replay rejected", jti=claims.jti, operation_id=operation_id)
             return False
         return True
