@@ -28,6 +28,8 @@ dependencies = [
     "sqlalchemy[asyncio]==2.0.52",
     "alembic==1.19.1",
     "asyncpg==0.31.0",
+    # AS-008: OPA policy client.
+    "httpx==0.28.1",
 ]
 
 [dependency-groups]
