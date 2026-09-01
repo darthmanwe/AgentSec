@@ -126,7 +126,19 @@ class Issue:
 
 
 def sha256(path: pathlib.Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """Hash a file's *content*, normalising line endings first.
+
+    The manifest asserts that the backlog has not been tampered with, which is a claim
+    about content, not about byte-level line endings. Hashing raw bytes made the manifest
+    platform-dependent: a Windows working tree holds CRLF, `.gitattributes` normalises to
+    LF in the repository, and CI's Linux checkout then disagreed with every hash generated
+    on the authoring machine — 45 spurious failures that said nothing about integrity.
+
+    Normalising here fixes it by construction rather than by relying on every contributor
+    having identical git settings. The tradeoff is accepted deliberately: a change that
+    only rewrites line endings is not a content change and should not fail validation.
+    """
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def parse_issue(path: pathlib.Path) -> Issue:
