@@ -34,7 +34,8 @@ from agentsec.db.models import (
     RunStatus,
 )
 
-EXPECTED_TABLES = {
+#: What AS-005 created for S0 and S1.
+S0_S1_TABLES = {
     "runs",
     "action_plans",
     "action_attempts",
@@ -45,6 +46,15 @@ EXPECTED_TABLES = {
     "execution_ledger",
     "audit_events",
 }
+
+#: Tables added later, each by the issue that first used it. Listing them separately keeps
+#: the trimming rule checkable: a new table must arrive with a named owner rather than
+#: appearing because somebody widened an expectation.
+LATER_TABLES = {
+    "model_calls": "AS-024",
+}
+
+EXPECTED_TABLES = S0_S1_TABLES | set(LATER_TABLES)
 
 DIGEST_A = "a" * 64
 DIGEST_B = "b" * 64
@@ -86,11 +96,27 @@ async def make_run(session: AsyncSession, run_id: str = "run-1") -> Run:
 # --------------------------------------------------------------------------- structure
 
 
-def test_scope_is_trimmed_to_s0_s1_consumers() -> None:
-    """AS-005 was trimmed deliberately. findings/artifacts/model_calls/tool_executions
-    arrive with the issue that first uses them; writing their migrations now would
-    guarantee rewriting them once M6 defines what they hold."""
+def test_every_table_arrived_with_a_named_owner() -> None:
+    """AS-005 was trimmed deliberately: findings, artifacts and tool_executions still
+    arrive with the issue that first uses them, because writing their migrations before
+    M6 defines what they hold would guarantee rewriting them.
+
+    The check is not "the schema has not grown" - it has, and correctly. It is that every
+    table beyond the S0/S1 set is one somebody deliberately added, rather than one that
+    appeared because an expectation was widened to make a test pass.
+    """
     assert set(Base.metadata.tables) == EXPECTED_TABLES
+
+    for table, issue in LATER_TABLES.items():
+        assert table in Base.metadata.tables, f"{table} is claimed by {issue} but absent"
+
+
+def test_the_deferred_tables_are_still_deferred() -> None:
+    """The trimming rule, stated as the thing it actually protects."""
+    for table in ("findings", "artifacts", "tool_executions"):
+        assert table not in Base.metadata.tables, (
+            f"{table} arrived early; AS-005 defers it to the issue that first uses it"
+        )
 
 
 def test_digest_columns_are_fixed_width() -> None:

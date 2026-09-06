@@ -25,6 +25,7 @@ from typing import Any
 from sqlalchemy import (
     CheckConstraint,
     Enum,
+    Float,
     ForeignKey,
     Index,
     String,
@@ -386,6 +387,52 @@ class ExecutionLedger(TimestampMixin, Base):
     __table_args__ = (Index("ix_execution_ledger_workflow_digest", "workflow_id", "action_digest"),)
 
 
+class ModelCall(TimestampMixin, Base):
+    """One request to a model provider, and what it cost (AS-024).
+
+    Written for every call, live or mock. Recording the mock ones matters more than it
+    looks: an ablation cell that ran offline and one that ran live must be
+    distinguishable in the results, and "no row" is indistinguishable from "no call".
+
+    ``model`` is what the provider *returned*, not what was requested. An alias can be
+    repointed between runs, and a benchmark that recorded the requested name would
+    silently attribute one model's numbers to another.
+    """
+
+    __tablename__ = "model_calls"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), index=True
+    )
+    provider: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    model: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    requested_model: Mapped[str] = mapped_column(String(128), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(64), nullable=False, default="plan")
+
+    prompt_version: Mapped[str | None] = mapped_column(String(64))
+    prompt_registry_hash: Mapped[str | None] = mapped_column(DigestColumn)
+
+    input_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    output_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    cache_read_tokens: Mapped[int] = mapped_column(nullable=False, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    latency_ms: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+    stop_reason: Mapped[str | None] = mapped_column(String(64))
+    truncated: Mapped[bool] = mapped_column(nullable=False, default=False)
+    """A truncated response parses as a shorter plan. Flagged rather than inferred, so a
+    run that acted on half a decision is visible in the results."""
+
+    schema_valid: Mapped[bool] = mapped_column(nullable=False, default=True)
+    request_id: Mapped[str | None] = mapped_column(String(128))
+
+    __table_args__ = (
+        CheckConstraint("cost_usd >= 0", name="model_call_cost_is_not_negative"),
+        Index("ix_model_calls_run_purpose", "run_id", "purpose"),
+    )
+
+
 class AuditEvent(Base):
     """Append-only audit trail.
 
@@ -425,6 +472,7 @@ __all__ = [
     "CapabilityJtiUse",
     "ExecutionLedger",
     "ExecutionState",
+    "ModelCall",
     "PolicyDecision",
     "PolicyOutcome",
     "Run",

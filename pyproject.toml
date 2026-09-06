@@ -37,6 +37,12 @@ dependencies = [
     "jsonschema==4.26.0",
     "mcp==2.1.1",
     "temporalio==1.32.0",
+    # AS-024: the live model client. Imported lazily inside the provider constructor, so
+    # importing agentsec never requires it and nothing on the mock path can reach an HTTP
+    # client transitively. The plan surveyed 1.2.0 in August; 1.4.0 is current within the
+    # same major line, and pinning what is current at build time is what the
+    # reproducibility rule actually wants.
+    "anthropic==1.4.0",
 ]
 
 [dependency-groups]
