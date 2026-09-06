@@ -83,6 +83,9 @@ check = "ruff check . && ruff format --check . && mypy src && pytest -q"
 "opa-test" = "python scripts/toolbox.py opa test policy"
 "opa-check" = "python scripts/toolbox.py opa check --strict policy"
 "opa-fmt" = "python scripts/toolbox.py opa fmt --list policy"
+# Reclaim sandbox volumes and containers left by a crashed run (AS-031A). Docker
+# Desktop's disk image only ever grows, so leaked workspaces are permanent.
+reap = "python -c \"from agentsec.sandbox import reap; r = reap(); print(f'reclaimed {r.total} sandbox artifacts')\""
 "compose-config" = "docker compose config --quiet"
 
 # --------------------------------------------------------------------------- ruff
