@@ -32,6 +32,7 @@ import asyncio
 import contextlib
 import io
 import pathlib
+import re
 import shutil
 import subprocess
 import tarfile
@@ -46,6 +47,15 @@ from agentsec.log import get_logger
 
 log = get_logger("agentsec.sandbox")
 
+
+class SandboxError(Exception):
+    """Something went wrong operating the sandbox, not inside it."""
+
+
+class DockerUnavailableError(SandboxError):
+    """Docker is not installed or the daemon is not running."""
+
+
 WORKSPACE: Final = "/workspace"
 SCRATCH: Final = "/scratch"
 
@@ -58,13 +68,21 @@ RUN_LABEL: Final = "agentsec.run"
 #: as uid 0 is a materially different problem from one that starts as 65534.
 NOBODY: Final = "65534:65534"
 
+#: Docker's own volume-name grammar. Enforced rather than assumed, because it is what
+#: makes a bind mount *unexpressible*: every way of writing a host path - an absolute
+#: path, a relative one, a Windows drive letter, a UNC share - contains a character this
+#: pattern rejects. A caller cannot smuggle one through the auxiliary-volume parameter.
+_VOLUME_NAME: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
 
-class SandboxError(Exception):
-    """Something went wrong operating the sandbox, not inside it."""
 
-
-class DockerUnavailableError(SandboxError):
-    """Docker is not installed or the daemon is not running."""
+def require_volume_name(name: str) -> str:
+    """Reject anything that is not a plain Docker volume name."""
+    if not _VOLUME_NAME.match(name):
+        raise SandboxError(
+            f"{name!r} is not a Docker volume name. Host paths are never mounted into a "
+            "sandbox; stage files into a volume instead."
+        )
+    return name
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +185,7 @@ class DockerSandbox:
         network: bool = False,
         env: Mapping[str, str] | None = None,
         run_id: str = "adhoc",
+        extra_volumes: Mapping[str, str] | None = None,
     ) -> list[str]:
         """Assemble the full ``docker run`` command line.
 
@@ -208,7 +227,19 @@ class DockerSandbox:
 
         if workspace is not None:
             mount = "rw" if writable_workspace else "ro"
-            command += ["--volume", f"{workspace.name}:{WORKSPACE}:{mount}", "--workdir", WORKSPACE]
+            command += [
+                "--volume",
+                f"{require_volume_name(workspace.name)}:{WORKSPACE}:{mount}",
+                "--workdir",
+                WORKSPACE,
+            ]
+
+        # Auxiliary volumes are always read-only and always validated. They exist so a
+        # scanner can be handed its ruleset or its vulnerability database without either
+        # being mixed into the code under scan - and without the temptation to reach for a
+        # bind mount to do it.
+        for name, target in sorted((extra_volumes or {}).items()):
+            command += ["--volume", f"{require_volume_name(name)}:{target}:ro"]
 
         for key, value in (env or {}).items():
             command += ["--env", f"{key}={value}"]
@@ -218,6 +249,99 @@ class DockerSandbox:
         return command
 
     # ------------------------------------------------------------------ workspaces
+
+    async def ensure_volume(self, name: str, *, run_id: str = "cache") -> str:
+        """Create a named volume if it does not exist, and return its name.
+
+        Used for caches that outlive a run - the Trivy database, most obviously. Kept
+        separate from :meth:`workspace` because these are deliberately *not* reaped: the
+        point of a cache volume is that the next run finds it already there.
+        """
+        require_volume_name(name)
+        existing = await self._run_docker(["volume", "ls", "--quiet", "--filter", f"name=^{name}$"])
+        if existing.strip() != name:
+            await self._run_docker(["volume", "create", "--label", f"{RUN_LABEL}={run_id}", name])
+
+        return name
+
+    async def seed_volume(
+        self,
+        volume: str,
+        image: str,
+        argv: Sequence[str],
+        *,
+        mount: str = WORKSPACE,
+        network: bool = False,
+        env: Mapping[str, str] | None = None,
+        timeout_seconds: float = 600.0,
+    ) -> SandboxResult:
+        """Populate a cache volume, running as root.
+
+        Provisioning, not analysis, and the distinction is the whole justification. This
+        runs a *pinned* image with a *fixed* argv over *no untrusted input* - fetching
+        Trivy's vulnerability database is the only current use. Nothing a planner or a
+        scanned repository can influence reaches it.
+
+        Root is needed because a fresh Docker volume is owned by ``root:root`` and the
+        tool has to create directories inside it. An earlier version tried to chown the
+        volume to uid 65534 and keep seeding unprivileged; the chown did not reliably
+        persist through Docker Desktop's volume driver, and a control that works sometimes
+        is worse than one that is absent, because it leaves a belief nobody re-checks.
+
+        Everything untrusted still goes through :meth:`run`, as uid 65534, with the cache
+        mounted read-only. Root writes the database; nobody reads it.
+
+        The rules that are absolute stay absolute here: no host path, no Docker socket, no
+        capabilities, no privilege escalation.
+        """
+        command = [
+            self._docker,
+            "run",
+            "--rm",
+            "--label",
+            f"{LABEL}=true",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--read-only",
+            "--tmpfs",
+            f"/tmp:rw,nosuid,nodev,size=2g",  # noqa: S108, F541 - container tmpfs, not a host path
+            "--volume",
+            f"{require_volume_name(volume)}:{mount}",
+            *self._limits.as_flags(),
+            "--network",
+            "bridge" if network else "none",
+        ]
+        for key, value in (env or {}).items():
+            command += ["--env", f"{key}={value}"]
+        command += [image, *argv]
+
+        process = await asyncio.create_subprocess_exec(
+            *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
+        except TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                process.kill()
+            await process.wait()
+            return SandboxResult(
+                exit_code=124,
+                stdout="",
+                stderr=f"seeding {volume} exceeded {timeout_seconds}s",
+                duration_seconds=timeout_seconds,
+                timed_out=True,
+                image=image,
+            )
+
+        return SandboxResult(
+            exit_code=process.returncode or 0,
+            stdout=stdout.decode("utf-8", "replace"),
+            stderr=stderr.decode("utf-8", "replace"),
+            duration_seconds=0.0,
+            image=image,
+        )
 
     @contextlib.asynccontextmanager
     async def workspace(self, run_id: str) -> AsyncIterator[Workspace]:
@@ -246,6 +370,10 @@ class DockerSandbox:
         finally:
             await self._remove_volume(name)
 
+    async def stage_into(self, volume: str, files: Mapping[str, str | bytes]) -> None:
+        """Stage files into any named volume, by name rather than by workspace."""
+        await self.stage(Workspace(run_id="stage", name=require_volume_name(volume)), files)
+
     async def stage(self, workspace: Workspace, files: Mapping[str, str | bytes]) -> None:
         """Copy files into the workspace volume over a tar stream.
 
@@ -266,7 +394,7 @@ class DockerSandbox:
             "--security-opt",
             "no-new-privileges",
             "--volume",
-            f"{workspace.name}:{WORKSPACE}",
+            f"{require_volume_name(workspace.name)}:{WORKSPACE}",
             str(self._utility),
             "tar",
             "-xf",
@@ -329,6 +457,7 @@ class DockerSandbox:
         run_id: str = "adhoc",
         timeout_seconds: float | None = None,
         binary_stdout: bool = False,
+        extra_volumes: Mapping[str, str] | None = None,
     ) -> SandboxResult:
         """Run a command in the sandbox and return what it produced."""
         if shutil.which(self._docker) is None:
@@ -344,6 +473,7 @@ class DockerSandbox:
             network=network,
             env=env,
             run_id=run_id,
+            extra_volumes=extra_volumes,
         )
         limit = timeout_seconds if timeout_seconds is not None else self._limits.timeout_seconds
         started = time.monotonic()
@@ -446,4 +576,5 @@ __all__ = [
     "SandboxResult",
     "Workspace",
     "docker_available",
+    "require_volume_name",
 ]

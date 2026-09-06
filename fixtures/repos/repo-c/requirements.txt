@@ -1,0 +1,7 @@
+# Deliberately vulnerable pinned dependencies, used as scanner ground truth (AS-030).
+# Every version here is old enough to carry published advisories; they exist so the
+# evaluation has a known denominator, not because anything installs them.
+PyYAML==5.3.1
+requests==2.19.1
+urllib3==1.24.1
+Jinja2==2.10

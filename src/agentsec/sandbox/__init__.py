@@ -19,6 +19,7 @@ from agentsec.sandbox.runner import (
     SandboxResult,
     Workspace,
     docker_available,
+    require_volume_name,
 )
 
 __all__ = [
@@ -37,4 +38,5 @@ __all__ = [
     "docker_available",
     "find_leftovers",
     "reap",
+    "require_volume_name",
 ]

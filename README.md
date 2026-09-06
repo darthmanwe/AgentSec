@@ -19,22 +19,60 @@ from committed evaluation artifacts rather than typed in by hand.
 | Rev 0 | Execution package reconciliation, package validator, preflight | ✅ complete |
 | S0 | Threat model, bootstrap, config, logging, compose, schema | ✅ complete |
 | S1 | Authorization kernel (digest, OPA, approvals, capabilities) | ✅ complete |
-| S2 | MCP gateway, Temporal workflows, sandbox, scanners | ⬜ not started |
+| S2 | MCP gateway, Temporal workflows, sandbox, scanners | 🟡 in progress |
 | S3 | Planner, adversarial evaluation, ablation | ⬜ not started |
 | S4 | Observability, demo UI, release | ⬜ not started |
 
 Do not treat this as portfolio-ready before S3 completes.
 
 **What S1 being complete actually means:** the authorization kernel is built and
-verified independently of any model. 374 tests pass, of which 223 are marked `authz`
-and run in CI with `ANTHROPIC_API_KEY` empty. Policy denials, fail-closed behaviour on
-an unreachable engine, exact-action approval binding, argument mutation after approval,
-capability expiry, replay, and cross-action reuse are each covered by negative tests,
-and an aggregate sweep asserts that zero attack scenarios reach execution.
+verified independently of any model. 318 tests are marked `authz` and run in CI with
+`ANTHROPIC_API_KEY` empty. Policy denials, fail-closed behaviour on an unreachable
+engine, exact-action approval binding, argument mutation after approval, capability
+expiry, replay, and cross-action reuse are each covered by negative tests, and an
+aggregate sweep asserts that zero attack scenarios reach execution.
 
-What does *not* exist yet: the MCP gateway, so nothing dispatches to a backend; the
-planner, so no model has ever proposed an action here; and the evaluation, so there are
-no benchmark numbers to report.
+**Where S2 has got to.** The MCP gateway dispatches to four real stdio servers. Temporal
+runs the review workflow, pauses durably for a human decision, and survives a worker
+restart while waiting — driven by `agentsec approve | deny | list`. A logical-execution
+ledger keeps a retried side effect to one logical effect. A fault-injection harness
+breaks each of those on purpose and asserts they hold. Semgrep and Trivy run inside an
+ephemeral container with no network, no capabilities, a read-only root and a per-run
+volume.
+
+What does *not* exist yet: the planner, so **no model has ever proposed an action here**;
+and the evaluation, so there are no benchmark numbers to report. 648 tests pass without
+the compose stack; the Temporal integration tests bring it to 657.
+
+---
+
+## Scanners
+
+Semgrep and Trivy run as digest-pinned containers inside the AS-031A sandbox: no network,
+no capabilities, a read-only root filesystem, a non-root user, and a per-run volume that
+is never a bind mount of the host. Neither adapter accepts a command, an argument list or
+a flags string — a caller picks an enumerated mode and a validated path, and nothing else
+reaches the process. That is enforced by a test over the adapters' signatures, not by
+review.
+
+**Semgrep rules here are first-party.** `policy/semgrep/agentsec.yaml`, written for this
+project's fixture corpus, rather than anything from Semgrep's registry. Two reasons:
+
+- *Licensing.* The community rules are under the Semgrep Rules License v1.0, limited to
+  internal, non-competing use — the term that prompted the [Opengrep](https://opengrep.dev)
+  fork. Vendoring them into a public repository is not defensible. **Opengrep is a drop-in
+  replacement** for anyone who wants registry-equivalent coverage; swap the image pin in
+  `src/agentsec/images.py`.
+- *Determinism.* The evaluation compares detections against known ground truth. A pinned
+  first-party ruleset gives a fixed denominator; a drifting upstream registry means last
+  month's numbers cannot be reproduced.
+
+**Trivy's vulnerability database is fetched once and then never touched.** Trivy ships
+without one and downloads it on first run, which would make every scan depend on the day
+it ran. Exactly one operation touches the network — `TrivyScanner.ensure_database()` —
+and every scan afterwards runs with `--network none`, `--skip-db-update`,
+`--skip-java-db-update` and `--offline-scan` against a read-only cache. The database
+version travels on every result, so an artifact says which one produced it.
 
 ---
 

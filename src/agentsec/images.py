@@ -100,6 +100,30 @@ BUSYBOX: Final = Image(
     ),
 )
 
+SEMGREP: Final = Image(
+    "semgrep/semgrep",
+    "1.175.0",
+    "sha256:b94b53d02fd4a022f9eac4e2af1380f5c3c4c21400e79d3336bdff1d1db5e796",
+    note=(
+        "Run against first-party rules only (AS-029). Semgrep's community registry rules "
+        "are under the Semgrep Rules License v1.0 - internal, non-competing use - which "
+        "is not defensible to vendor into a public portfolio repository. Opengrep is a "
+        "drop-in for anyone wanting registry-equivalent coverage."
+    ),
+)
+
+TRIVY: Final = Image(
+    "aquasec/trivy",
+    "0.74.0",
+    "sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969",
+    note=(
+        "Ships WITHOUT its vulnerability database and fetches it on first run (AS-030). "
+        "The database is staged into a cache volume ahead of time and every scan runs "
+        "--skip-db-update --offline-scan, because a database that silently updates "
+        "between runs makes published numbers irreproducible."
+    ),
+)
+
 #: Images referenced by docker-compose.yml, keyed by service name.
 COMPOSE_IMAGES: Final[dict[str, Image]] = {
     "postgres": POSTGRES,
@@ -116,6 +140,8 @@ COMPOSE_IMAGES: Final[dict[str, Image]] = {
 TOOL_IMAGES: Final[dict[str, Image]] = {
     "opa": OPA,
     "busybox": BUSYBOX,
+    "semgrep": SEMGREP,
+    "trivy": TRIVY,
 }
 
 __all__ = [
@@ -125,8 +151,10 @@ __all__ = [
     "OPA",
     "POSTGRES",
     "PROMETHEUS",
+    "SEMGREP",
     "TEMPORAL",
     "TEMPORAL_UI",
     "TOOL_IMAGES",
+    "TRIVY",
     "Image",
 ]

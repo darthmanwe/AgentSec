@@ -18,9 +18,11 @@ from agentsec.images import (
     OPA,
     POSTGRES,
     PROMETHEUS,
+    SEMGREP,
     TEMPORAL,
     TEMPORAL_UI,
     TOOL_IMAGES,
+    TRIVY,
     Image,
 )
 
@@ -31,8 +33,10 @@ __all__ = [
     "OPA",
     "POSTGRES",
     "PROMETHEUS",
+    "SEMGREP",
     "TEMPORAL",
     "TEMPORAL_UI",
     "TOOL_IMAGES",
+    "TRIVY",
     "Image",
 ]

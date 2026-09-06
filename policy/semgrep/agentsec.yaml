@@ -1,0 +1,146 @@
+# First-party Semgrep rules (AS-029).
+#
+# Written here rather than pulled from Semgrep's registry for two reasons, and the second
+# is the better one.
+#
+# Licensing: the community rules are under the Semgrep Rules License v1.0, limited to
+# internal, non-competing use. That is the term that prompted the Opengrep fork, and
+# vendoring those rules into a public portfolio repository is not defensible. Opengrep is
+# a drop-in for anyone who wants registry-equivalent coverage.
+#
+# Determinism: the evaluation compares detections against known ground truth in a fixture
+# corpus. A pinned first-party ruleset gives a fixed denominator; a drifting upstream
+# registry means last month's numbers cannot be reproduced, and reproducibility is the one
+# property this project cannot trade away.
+#
+# So these rules target the fixture corpus deliberately and make no claim to general
+# coverage. Every rule id here appears in the eval's ground-truth table.
+
+rules:
+  - id: agentsec.python.sql-injection-concat
+    languages: [python]
+    severity: ERROR
+    message: >-
+      User input is concatenated into a SQL statement. Use a parameterised query
+      (execute with a parameter tuple) instead.
+    metadata:
+      category: security
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+      confidence: HIGH
+      fixture: repo-a/src/main.py
+    patterns:
+      - pattern-either:
+          - pattern: $CURSOR.execute("..." + $X)
+          - pattern: $CURSOR.execute($X + "...")
+          - pattern: $CURSOR.execute("..." % $X)
+          - pattern: $CURSOR.execute(f"...{$X}...")
+          - pattern: $CURSOR.execute("...".format(...))
+
+  - id: agentsec.python.subprocess-shell-true
+    languages: [python]
+    severity: ERROR
+    message: >-
+      subprocess called with shell=True. A shell turns any attacker-influenced argument
+      into command execution; pass an argument list instead.
+    metadata:
+      category: security
+      cwe: "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: subprocess.run(..., shell=True, ...)
+          - pattern: subprocess.Popen(..., shell=True, ...)
+          - pattern: subprocess.call(..., shell=True, ...)
+          - pattern: subprocess.check_output(..., shell=True, ...)
+
+  - id: agentsec.python.eval-of-input
+    languages: [python]
+    severity: ERROR
+    message: >-
+      eval or exec on a value that is not a literal. This is arbitrary code execution
+      wherever the value can be influenced.
+    metadata:
+      category: security
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: eval($X)
+          - pattern: exec($X)
+      - pattern-not: eval("...")
+      - pattern-not: exec("...")
+
+  - id: agentsec.python.hardcoded-credential
+    languages: [python]
+    severity: WARNING
+    message: >-
+      A credential appears to be hardcoded. Move it to configuration and keep it out of
+      version control.
+    metadata:
+      category: security
+      cwe: "CWE-798: Use of Hard-coded Credentials"
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: $NAME = "..."
+      - metavariable-regex:
+          metavariable: $NAME
+          regex: (?i)^(password|passwd|secret|api_key|apikey|token|private_key)$
+      - pattern-not: $NAME = ""
+
+  - id: agentsec.python.insecure-hash
+    languages: [python]
+    severity: WARNING
+    message: >-
+      MD5 and SHA-1 are broken for any security purpose. Use SHA-256 or better.
+    metadata:
+      category: security
+      cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: hashlib.md5(...)
+          - pattern: hashlib.sha1(...)
+
+  - id: agentsec.python.yaml-unsafe-load
+    languages: [python]
+    severity: ERROR
+    message: >-
+      yaml.load without a safe loader constructs arbitrary Python objects. Use
+      yaml.safe_load.
+    metadata:
+      category: security
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+      confidence: HIGH
+    patterns:
+      - pattern: yaml.load($X)
+
+  - id: agentsec.python.pickle-load
+    languages: [python]
+    severity: ERROR
+    message: >-
+      Unpickling untrusted data executes arbitrary code. Use a data format that does not
+      carry code.
+    metadata:
+      category: security
+      cwe: "CWE-502: Deserialization of Untrusted Data"
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: pickle.load(...)
+          - pattern: pickle.loads(...)
+
+  - id: agentsec.python.disabled-tls-verification
+    languages: [python]
+    severity: ERROR
+    message: >-
+      TLS certificate verification is disabled. This removes the only protection against
+      an active network attacker.
+    metadata:
+      category: security
+      cwe: "CWE-295: Improper Certificate Validation"
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: requests.$METHOD(..., verify=False, ...)
+          - pattern: httpx.$METHOD(..., verify=False, ...)
