@@ -186,6 +186,7 @@ class DockerSandbox:
         env: Mapping[str, str] | None = None,
         run_id: str = "adhoc",
         extra_volumes: Mapping[str, str] | None = None,
+        entrypoint: str | None = None,
     ) -> list[str]:
         """Assemble the full ``docker run`` command line.
 
@@ -243,6 +244,13 @@ class DockerSandbox:
 
         for key, value in (env or {}).items():
             command += ["--env", f"{key}={value}"]
+
+        # Overriding the entrypoint changes *what* runs, never what it is allowed to do:
+        # every isolation flag above is already unconditional, and the argv was always
+        # caller-controlled. Needed because an image with its own entrypoint - Trivy's is
+        # `trivy` - cannot otherwise be asked a question about its own containment.
+        if entrypoint is not None:
+            command += ["--entrypoint", entrypoint]
 
         command.append(image)
         command += list(argv)
@@ -458,6 +466,7 @@ class DockerSandbox:
         timeout_seconds: float | None = None,
         binary_stdout: bool = False,
         extra_volumes: Mapping[str, str] | None = None,
+        entrypoint: str | None = None,
     ) -> SandboxResult:
         """Run a command in the sandbox and return what it produced."""
         if shutil.which(self._docker) is None:
@@ -474,6 +483,7 @@ class DockerSandbox:
             env=env,
             run_id=run_id,
             extra_volumes=extra_volumes,
+            entrypoint=entrypoint,
         )
         limit = timeout_seconds if timeout_seconds is not None else self._limits.timeout_seconds
         started = time.monotonic()
