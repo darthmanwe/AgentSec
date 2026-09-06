@@ -55,6 +55,11 @@ dev = [
     "types-jsonschema==4.26.0.20260518",
 ]
 
+# The operator's end of the human-in-the-loop gate (AS-021). The AS-042 UI consumes this
+# rather than replacing it, so a decision has exactly one path into the database.
+[project.scripts]
+agentsec = "agentsec.cli.main:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -116,6 +121,10 @@ ignore = [
 "tests/**" = ["S105", "S106", "S107", "S603", "S607"]
 # The package tooling prints its report by design.
 "scripts/**" = ["T20"]
+# The CLI is a terminal program; stdout is its output. The T20 ban exists because stdout
+# is the MCP protocol stream - which is a property of the servers, not of every module.
+# tests/test_mcp_stdout.py asserts the ban where it actually matters.
+"src/agentsec/cli/**" = ["T20"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["agentsec"]

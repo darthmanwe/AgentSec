@@ -63,6 +63,11 @@ class RunStatus(enum.StrEnum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
+    DENIED_EXPIRED = "DENIED_EXPIRED"
+    """An approval lapsed while the run waited on it (AS-021). Distinct from CANCELLED and
+    from FAILED: nothing broke and nobody stopped it, a decision simply never came. That
+    difference is what an operator needs to see, and collapsing it into FAILED would hide
+    a queue nobody is working."""
 
 
 class PolicyOutcome(enum.StrEnum):

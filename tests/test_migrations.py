@@ -22,6 +22,12 @@ import pytest
 import sqlalchemy
 from sqlalchemy import text
 
+# Imported for its side effect: declaring the models is what populates Base.metadata.
+# Without it the expectations below are built from empty metadata, and the whole module
+# passes against an empty database by comparing nothing to nothing. It only appeared to
+# work because another test module imported the models first, so a green result here
+# depended on collection order.
+import agentsec.db.models  # noqa: F401  the import is the point
 from agentsec.config import load_settings
 from agentsec.db.base import Base
 
@@ -29,6 +35,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 pytestmark = pytest.mark.integration
 
 EXPECTED_TABLES = set(Base.metadata.tables)
+assert EXPECTED_TABLES, "models were not imported; these tests would compare nothing"
 
 
 def sync_url() -> str:

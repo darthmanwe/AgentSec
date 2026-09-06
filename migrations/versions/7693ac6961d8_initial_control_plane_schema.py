@@ -107,6 +107,7 @@ def upgrade() -> None:
                 "COMPLETED",
                 "FAILED",
                 "CANCELLED",
+                "DENIED_EXPIRED",
                 name="run_status",
                 native_enum=False,
                 length=32,
