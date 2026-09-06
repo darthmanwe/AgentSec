@@ -19,7 +19,7 @@ from committed evaluation artifacts rather than typed in by hand.
 | Rev 0 | Execution package reconciliation, package validator, preflight | ✅ complete |
 | S0 | Threat model, bootstrap, config, logging, compose, schema | ✅ complete |
 | S1 | Authorization kernel (digest, OPA, approvals, capabilities) | ✅ complete |
-| S2 | MCP gateway, Temporal workflows, sandbox, scanners | 🟡 in progress |
+| S2 | MCP gateway, Temporal workflows, sandbox, scanners, GitHub | ✅ complete |
 | S3 | Planner, adversarial evaluation, ablation | ⬜ not started |
 | S4 | Observability, demo UI, release | ⬜ not started |
 
@@ -32,17 +32,29 @@ engine, exact-action approval binding, argument mutation after approval, capabil
 expiry, replay, and cross-action reuse are each covered by negative tests, and an
 aggregate sweep asserts that zero attack scenarios reach execution.
 
-**Where S2 has got to.** The MCP gateway dispatches to four real stdio servers. Temporal
-runs the review workflow, pauses durably for a human decision, and survives a worker
-restart while waiting — driven by `agentsec approve | deny | list`. A logical-execution
-ledger keeps a retried side effect to one logical effect. A fault-injection harness
-breaks each of those on purpose and asserts they hold. Semgrep and Trivy run inside an
-ephemeral container with no network, no capabilities, a read-only root and a per-run
-volume.
+**What S2 being complete actually means:** a proposed action now travels the whole
+path from plan to external effect, and every step of it refuses. The MCP gateway
+dispatches to four real stdio servers. Temporal runs the review workflow, pauses durably
+for a human decision, and survives a worker restart while waiting — driven by
+`agentsec approve | deny | list`. A logical-execution ledger keeps a retried side effect
+to one logical effect. Semgrep and Trivy run inside an ephemeral container with no
+network, no capabilities, a read-only root and a per-run volume that is never a bind
+mount. One real external backend, GitHub, takes scoped reads and a single approval-gated
+write.
+
+A fault-injection harness breaks each of those durability claims on purpose — killed
+worker, activity timeout, transient failure, duplicated execution — and asserts they hold
+anyway.
+
+**The guarantee against GitHub is at-most-once with reconciliation, not exactly-once.**
+Its issue-comment endpoint exposes no idempotency key, so exactly-once is not available at
+any price. A hidden operation marker plus a pre-write lookup narrows the duplicate window;
+the residual exposure is stated in the threat model rather than papered over.
 
 What does *not* exist yet: the planner, so **no model has ever proposed an action here**;
-and the evaluation, so there are no benchmark numbers to report. 648 tests pass without
-the compose stack; the Temporal integration tests bring it to 657.
+and the evaluation, so there are no benchmark numbers to report. 741 tests pass with the
+compose stack up; 696 without it, and 345 of those are the authorization kernel running
+with `ANTHROPIC_API_KEY` empty.
 
 ---
 
