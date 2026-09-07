@@ -57,3 +57,6 @@ desktop.ini
 # deliberately (AS-040); every exploratory run is not.
 eval/artifacts/
 eval/runs/
+
+# Interview prep. Personal working notes, same convention as project_status.md.
+STUDY_GUIDE.md
