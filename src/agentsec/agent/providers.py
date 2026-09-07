@@ -17,7 +17,7 @@ import json
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Final
 
 from agentsec.agent.accounting import UsageAccountant
 from agentsec.agent.provider import (
@@ -61,8 +61,22 @@ class MockProvider:
     calls: list[ModelRequest] = field(default_factory=list)
     latency_ms: float = 0.0
     stop_reason: str = "end_turn"
+    cache: Any | None = None
+    """Optional, and the reason it exists is not performance.
+
+    A dry run claims to rehearse the code a live run will execute. If the mock bypassed
+    the cache, the rehearsal would skip the single mechanism the funded run most depends
+    on - the one that makes a crash cost time instead of budget - and "rehearses the code
+    that will run" would be false about the part that matters. So the mock reads and writes
+    the cache too, at a recorded cost of zero."""
 
     async def complete(self, request: ModelRequest) -> ModelResponse:
+        if self.cache is not None:
+            cached = self.cache.get(request)
+            if cached is not None:
+                replayed: ModelResponse = cached.as_response()
+                return replayed
+
         self.calls.append(request)
         text = self._select(request)
 
@@ -81,7 +95,7 @@ class MockProvider:
             input_tokens=_estimate_tokens(request),
             output_tokens=max(1, len(text) // 4),
         )
-        return ModelResponse(
+        response = ModelResponse(
             model=request.model,
             text=text,
             usage=usage,
@@ -91,6 +105,10 @@ class MockProvider:
             parsed=parsed,
             metadata={"mock": True},
         )
+        if self.cache is not None:
+            # Cost zero: a rehearsal must not imply a resumed live run would be free.
+            self.cache.put(request, response, 0.0)
+        return response
 
     def _select(self, request: ModelRequest) -> str:
         if self.responder is not None:
@@ -120,11 +138,24 @@ def fingerprint(request: ModelRequest) -> str:
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:32]
 
 
+#: Safety multiplier on the character heuristic.
+#:
+#: Four characters per token is a reasonable average and a bad *reservation*: it
+#: under-counts code, JSON and non-Latin text, and an under-reservation makes the budget
+#: ceiling weaker than the number the operator set. The accountant reconciles against
+#: actual usage afterwards, so over-reserving costs nothing but a little headroom, while
+#: under-reserving costs money. The asymmetry decides the direction.
+TOKEN_SAFETY_FACTOR: Final = 1.35
+
+
 def _estimate_tokens(request: ModelRequest) -> int:
-    """Roughly four characters per token. Good enough for a mock, and used for nothing
-    that spends money."""
+    """A deliberately conservative token estimate.
+
+    Used for the pre-request reservation, so it errs high. See TOKEN_SAFETY_FACTOR.
+    """
     characters = len(request.system) + sum(len(m.content) for m in request.messages)
-    return max(1, characters // 4)
+    schema = len(json.dumps(request.output_schema)) if request.output_schema else 0
+    return max(1, int(((characters + schema) / 4) * TOKEN_SAFETY_FACTOR))
 
 
 class AnthropicProvider:
@@ -148,12 +179,18 @@ class AnthropicProvider:
         *,
         client: Any | None = None,
         max_retries: int = 2,
+        cache: Any | None = None,
+        retry_log: Any | None = None,
+        count_tokens: bool = True,
     ) -> None:
         if not api_key and client is None:
             # Fails at construction rather than at the first call. A provider built
             # without a key is a provider that will fail in the middle of a sweep.
             raise ProviderError("AnthropicProvider requires an API key")
         self._accountant = accountant
+        self._cache = cache
+        self._retry_log = retry_log
+        self._count_tokens = count_tokens
         if client is not None:
             self._client = client
         else:
@@ -163,34 +200,93 @@ class AnthropicProvider:
                 raise ProviderError(
                     "the anthropic SDK is not installed; live calls are unavailable"
                 ) from error
+            # The SDK retries too, and that is fine: its retries handle the fast transient
+            # cases and ours handle the slow ones (a rate-limit window outlasts any
+            # sensible client-level schedule). Both are bounded, so they compose.
             self._client = AsyncAnthropic(api_key=api_key, max_retries=max_retries)
 
     async def complete(self, request: ModelRequest) -> ModelResponse:
+        """Make one call, or replay one already paid for.
+
+        The cache is consulted **before** the reservation. A cached response costs
+        nothing, so reserving against the ceiling for it would make a resumed run appear
+        to spend budget it is not spending - and could refuse a call the operator has
+        already funded.
+        """
+        if self._cache is not None:
+            cached = self._cache.get(request)
+            if cached is not None:
+                replayed: ModelResponse = cached.as_response()
+                return replayed
+
         capabilities = capabilities_for(request.model)
         payload = build_payload(request)
+        estimated = await self._estimate_input_tokens(request, payload)
 
         reservation = await self._accountant.reserve(
             request.model,
-            input_tokens=_estimate_tokens(request),
+            input_tokens=estimated,
             max_output_tokens=min(request.max_output_tokens, capabilities.max_output_tokens),
             purpose=request.purpose,
         )
 
         started = time.monotonic()
         try:
-            raw = await self._client.messages.create(**payload)
-        except Exception as error:
-            # The request failed, so it cost nothing. Holding the reservation would shrink
-            # the budget for the rest of the run and stop a sweep early with money unspent.
+            raw = await self._request_with_retry(payload, request)
+            latency_ms = (time.monotonic() - started) * 1000
+            response = _decode(raw, request, latency_ms)
+        except BaseException:
+            # Released on *every* failure path, not only on a transport error. An earlier
+            # version released only around the client call, so an exception while decoding
+            # a response would leak the hold - and a sweep that hit a few of those would
+            # stop early with money unspent, blaming a budget it had not used.
             await self._accountant.release(reservation)
-            raise ProviderError(
-                f"anthropic request failed: {type(error).__name__}: {error}"
-            ) from error
+            raise
 
-        latency_ms = (time.monotonic() - started) * 1000
-        response = _decode(raw, request, latency_ms)
-        await self._accountant.settle(reservation, response.usage)
+        actual_usd = await self._accountant.settle(reservation, response.usage)
+
+        # Written before returning, so a crash in whatever the caller does next cannot
+        # lose a response that has been paid for.
+        if self._cache is not None:
+            self._cache.put(request, response, actual_usd)
         return response
+
+    async def _request_with_retry(self, payload: dict[str, Any], request: ModelRequest) -> Any:
+        """Send the request, retrying transient failures with backoff.
+
+        Imported here rather than at module scope so the mock path stays free of it.
+        """
+        from agentsec.eval.resilience import with_retry
+
+        async def attempt() -> Any:
+            return await self._client.messages.create(**payload)
+
+        return await with_retry(
+            attempt,
+            what=f"{request.model} {request.purpose}",
+            retry_log=self._retry_log,
+        )
+
+    async def _estimate_input_tokens(self, request: ModelRequest, payload: dict[str, Any]) -> int:
+        """Count input tokens exactly where the API will do it for free.
+
+        ``messages.count_tokens`` is not billed, and an exact count makes the reservation
+        tight instead of merely conservative. It is best-effort: if the endpoint is
+        unavailable or the SDK version lacks it, the conservative character heuristic is
+        used instead. A failure to *count* must never prevent a call the operator funded.
+        """
+        if not self._count_tokens:
+            return _estimate_tokens(request)
+        try:
+            counted = await self._client.messages.count_tokens(
+                model=payload["model"],
+                system=payload.get("system"),
+                messages=payload["messages"],
+            )
+            tokens = int(getattr(counted, "input_tokens", 0) or 0)
+        except Exception:  # counting is best-effort by design; see the docstring
+            return _estimate_tokens(request)
+        return tokens if tokens > 0 else _estimate_tokens(request)
 
 
 def _decode(raw: Any, request: ModelRequest, latency_ms: float) -> ModelResponse:
@@ -209,10 +305,36 @@ def _decode(raw: Any, request: ModelRequest, latency_ms: float) -> ModelResponse
             thinking_parts.append(str(getattr(block, "thinking", "")))
 
     text = "".join(text_parts)
+
+    # Usage is *required*, unlike everything else here.
+    #
+    # An earlier version read it with getattr defaults like the other fields, which meant
+    # an unreadable usage object silently produced zero tokens - so the accountant settled
+    # every call at $0.00, the ledger showed no spend, and the budget ceiling could never
+    # trigger. The run would spend the real money while reporting none of it. A fault
+    # injection test found this by handing the decoder a response whose shape had changed.
+    #
+    # A response that cannot be priced cannot be accounted for, and failing the call is
+    # strictly better than under-reporting the spend: the reservation is released, the
+    # cell is recorded as unscoreable, and the operator finds out immediately.
     usage_obj = getattr(raw, "usage", None)
+    if usage_obj is None:
+        raise ProviderError(
+            f"{getattr(raw, 'model', 'unknown')} returned a response with no usage; "
+            "refusing to settle a call that cannot be priced"
+        )
+    try:
+        input_tokens = int(usage_obj.input_tokens or 0)
+        output_tokens = int(usage_obj.output_tokens or 0)
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ProviderError(
+            f"could not read token usage ({type(error).__name__}); refusing to settle a "
+            "call that cannot be priced"
+        ) from error
+
     usage = Usage(
-        input_tokens=int(getattr(usage_obj, "input_tokens", 0) or 0),
-        output_tokens=int(getattr(usage_obj, "output_tokens", 0) or 0),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
         cache_read_tokens=int(getattr(usage_obj, "cache_read_input_tokens", 0) or 0),
         cache_creation_tokens=int(getattr(usage_obj, "cache_creation_input_tokens", 0) or 0),
     )
@@ -245,6 +367,8 @@ def select_provider(
     api_key: str | None,
     accountant: UsageAccountant,
     mock_responses: Mapping[str, str] | None = None,
+    cache: Any | None = None,
+    retry_log: Any | None = None,
 ) -> Any:
     """Choose a provider. **The default is the one that cannot spend money.**
 
@@ -253,17 +377,20 @@ def select_provider(
     silently turn a free run into a paid one.
     """
     if not live:
-        return MockProvider(responses=dict(mock_responses or {}))
+        # The cache is wired into the mock as well, so a dry run rehearses the resume path
+        # rather than skipping the mechanism the funded run depends on most.
+        return MockProvider(responses=dict(mock_responses or {}), cache=cache)
     if not api_key:
         raise ProviderError("--live was requested but no API key is configured")
     log.warning(
         "live provider selected; this run will spend real credit",
         ceiling_usd=accountant.ceiling_usd,
     )
-    return AnthropicProvider(api_key, accountant)
+    return AnthropicProvider(api_key, accountant, cache=cache, retry_log=retry_log)
 
 
 __all__ = [
+    "TOKEN_SAFETY_FACTOR",
     "AnthropicProvider",
     "MockProvider",
     "fingerprint",

@@ -134,6 +134,17 @@ class BoundedPlanner:
     model: str = "claude-haiku-4-5-20251001"
     system_prompt_id: str = "planner.system"
     max_output_tokens: int = 4_096
+    sample_tag: str = ""
+    """Distinguishes repeated samples of the *same* question.
+
+    Appended to ``purpose``, which is part of the request identity but is deliberately not
+    part of the payload sent to the model. So repeat 2 of a case is a genuine re-sample -
+    a different cache key, an identical prompt - rather than a cache hit replaying repeat 1.
+
+    Without this, an Axis-A run with ``--repeats 3`` would report three times the trials
+    while holding one observation, and the confidence interval would be three times
+    tighter than the evidence supports. It would also cost nothing extra, which is exactly
+    what would make the mistake hard to notice."""
 
     async def plan(self, state: SecurityAgentState) -> PlanningResult:
         """Run the graph and return the proposed plan."""
@@ -292,8 +303,12 @@ class BoundedPlanner:
             messages=(Message(role="user", content=user),),
             max_output_tokens=self.max_output_tokens,
             output_schema=ACTION_PLAN_SCHEMA,
-            purpose="plan" if state.iteration == 0 else "replan",
+            purpose=self._purpose(state),
         )
+
+    def _purpose(self, state: SecurityAgentState) -> str:
+        stage = "plan" if state.iteration == 0 else "replan"
+        return f"{stage}/{self.sample_tag}" if self.sample_tag else stage
 
     @staticmethod
     def _validate(

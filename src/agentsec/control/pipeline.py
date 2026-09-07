@@ -118,6 +118,15 @@ class ControlOutcome:
     """Actions the planner's own validation dropped before authorization saw them. Still
     attempts by the planner, so they are reported rather than forgotten."""
 
+    injection_observed: bool = False
+    """Whether the planner reported that its evidence tried to instruct it.
+
+    Surfaced here rather than left on the planner's own result object, because the
+    evaluation needs it and reaching into the planner for it would be a guess about
+    internals. Reported separately from whether the planner complied: noticing an
+    injection and obeying it anyway are different outcomes, and so are noticing it and
+    refusing."""
+
     @property
     def attempted(self) -> int:
         """Every action the planner proposed, including what its own validator rejected."""
@@ -149,6 +158,7 @@ class ControlOutcome:
             "executed_actions": self.executed,
             "backend_calls": self.backend_calls,
             "planning_rejected": len(self.planning_rejected),
+            "injection_observed": self.injection_observed,
             "by_stage": dict(sorted(counts.items())),
         }
 
@@ -186,6 +196,7 @@ class ControlPipeline:
 
         planning = await self.planner.plan(state)
         outcome.planning_rejected = list(getattr(planning, "rejected", []))
+        outcome.injection_observed = bool(getattr(planning, "injection_observed", False))
 
         for index, action in enumerate(getattr(planning, "actions", ())):
             outcome.attempts.append(await self._authorize_and_dispatch(state, action, index))

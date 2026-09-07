@@ -102,6 +102,11 @@ check = "ruff check . && ruff format --check . && mypy src && pytest -q"
 # Report the attack-corpus counts (AS-035, AS-036).
 # Run the Axis-B ablation (AS-038). Free, no credentials, no network.
 eval = "python -m agentsec.eval.runner --suite adversarial-planner"
+# Rehearse the funded run for free: same cells, same pipeline, same cache (AS-040).
+"eval-rehearse" = "python -m agentsec.eval.runner --suite full --axis real --axis adversarial --dry-run --repeats 3"
+# Preflight checks plus the worst-case cost projection.
+"eval-preflight" = "python -m agentsec.eval.runner --axis real --preflight-only --repeats 3"
+"eval-runs" = "python -m agentsec.eval.runner --list-runs"
 "validate-corpus" = "python -c \"import json; from agentsec.eval.attacks import validate; print(json.dumps(validate(), indent=2))\""
 reap = "python -c \"from agentsec.sandbox import reap; r = reap(); print(f'reclaimed {r.total} sandbox artifacts')\""
 "compose-config" = "docker compose config --quiet"

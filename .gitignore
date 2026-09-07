@@ -56,3 +56,4 @@ desktop.ini
 # Evaluation run artifacts. The committed evidence for a published number is added
 # deliberately (AS-040); every exploratory run is not.
 eval/artifacts/
+eval/runs/

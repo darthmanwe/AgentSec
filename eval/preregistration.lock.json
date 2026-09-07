@@ -7,15 +7,15 @@
     "A4-full"
   ],
   "cells": 10,
-  "frozen_at": "2026-09-07T04:59:37.078108+00:00",
+  "frozen_at": "2026-09-07T11:28:50.720382+00:00",
   "frozen_on": "2026-09-07",
-  "hash": "9d9afdaefeb2f0390ed30048f103eca57f29d4738b06dd234ed5b3990487e0c9",
+  "hash": "a9adc97fd619493e04a667bc62bf93112134ee7bf9dbea70925aefa0c4981735",
   "inputs": {
     "attack_corpus_version": "1.0.0",
     "baseline_adr": "docs/adr/0003-frozen-evaluation-baseline.md",
     "corpus_manifest_hash": "85bedefdf3dac22ef70c21c67f7c18bf9156b04d64d8f43679d18c13426b6942",
     "policy_bundle_hash": "768b116b5d0a58dec632140b572096166e0a755ce7fb4b9c2bec1e1c346d50f0",
-    "prompt_registry_hash": "044b7314cff14685502aa20f7860b1c75b623111ec587158d7a230619684f448",
+    "prompt_registry_hash": "cb376c0bf7b8a8c3c146900dd0c9e63b8ecab65976cbd5d6a2402bd1e5e1006f",
     "tool_registry_hash": "9d2bcb88450a6acd54a3d24cc9d1f8f173d7a1e992e2cc8886c3b1e7a2b10b18"
   },
   "min_trials": 3,
