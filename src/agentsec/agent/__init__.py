@@ -7,6 +7,7 @@ service, directly or transitively. The planner proposes; it never authorises.
 """
 
 from agentsec.agent.accounting import BudgetExceededError, Reservation, UsageAccountant
+from agentsec.agent.planner import ACTION_PLAN_SCHEMA, BoundedPlanner, PlanningResult
 from agentsec.agent.prompts import REGISTRY, Prompt, PromptError, PromptRegistry
 from agentsec.agent.provider import (
     MODEL_CAPABILITIES,
@@ -24,24 +25,32 @@ from agentsec.agent.provider import (
     capabilities_for,
 )
 from agentsec.agent.providers import AnthropicProvider, MockProvider, select_provider
+from agentsec.agent.state import Hypothesis, ProposedAction, SecurityAgentState, StateError
 
 __all__ = [
+    "ACTION_PLAN_SCHEMA",
     "MODEL_CAPABILITIES",
     "REGISTRY",
     "AnthropicProvider",
+    "BoundedPlanner",
     "BudgetExceededError",
     "Effort",
+    "Hypothesis",
     "Message",
     "MockProvider",
     "ModelCapabilities",
     "ModelProvider",
     "ModelRequest",
     "ModelResponse",
+    "PlanningResult",
     "Prompt",
     "PromptError",
     "PromptRegistry",
+    "ProposedAction",
     "ProviderError",
     "Reservation",
+    "SecurityAgentState",
+    "StateError",
     "ThinkingMode",
     "UnknownModelError",
     "Usage",

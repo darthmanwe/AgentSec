@@ -43,6 +43,10 @@ dependencies = [
     # same major line, and pinning what is current at build time is what the
     # reproducibility rule actually wants.
     "anthropic==1.4.0",
+    # AS-026: the bounded planning subgraph. Pinned exactly rather than by range because
+    # the 1.x line moves fast and a planner that behaves differently between runs would
+    # make every ablation number unreproducible.
+    "langgraph==1.2.11",
 ]
 
 [dependency-groups]
