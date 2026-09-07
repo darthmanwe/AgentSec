@@ -620,12 +620,38 @@ def test_progress_reports_a_fraction(tmp_path: pathlib.Path) -> None:
 # =========================================================== preflight
 
 
-async def test_a_dead_policy_engine_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_a_dead_policy_engine_blocks_a_live_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """**The most dangerous failure available.**
 
-    OPA fails closed by design (AS-008), so a run against an unreachable engine denies
-    every action and reports a perfect score it did not earn. It looks exactly like
-    success, which is why it must be impossible rather than merely unlikely.
+    OPA fails closed by design (AS-008), so a cell evaluated against an unreachable engine
+    denies every action and reports a perfect score it did not earn. It looks exactly like
+    success.
+
+    A live run is blocked outright: funding a run that can only produce a partial result
+    is worse than not starting.
+    """
+    import agentsec.eval.runner as module
+
+    async def dead() -> bool:
+        return False
+
+    monkeypatch.setattr(module, "_opa_healthy", dead)
+    result = await module.preflight(module.RunSettings(arms=("A2-policy",), live=True, max_usd=5.0))
+
+    assert not result.ok
+    assert any("fails closed" in blocker for blocker in result.blockers)
+
+
+async def test_a_dead_policy_engine_skips_the_arm_on_a_free_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A free run keeps the cells it *can* run and tells the truth about the rest.
+
+    Skipping is safe in a way that proceeding is not - no cell is evaluated against an
+    engine that can only say DENY - and it is only acceptable because the run then reports
+    itself incomplete and unreportable.
     """
     import agentsec.eval.runner as module
 
@@ -635,8 +661,34 @@ async def test_a_dead_policy_engine_is_refused(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(module, "_opa_healthy", dead)
     result = await module.preflight(module.RunSettings(arms=("A2-policy",)))
 
-    assert not result.ok
-    assert any("fails closed" in blocker for blocker in result.blockers)
+    assert result.ok, "a free run should skip rather than refuse"
+    assert any("Skipping" in warning for warning in result.warnings)
+
+
+async def test_a_skipped_arm_still_counts_against_the_plan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dishonesty this prevents.
+
+    An earlier version filtered the arms and *then* built the plan, so a run that skipped
+    three arms planned only the remaining two and declared itself complete. It narrowed its
+    own denominator and reported success. The plan is now fixed from what was requested, so
+    a skip shows up as incomplete - because it is.
+    """
+    import agentsec.eval.runner as module
+
+    async def dead() -> bool:
+        return False
+
+    monkeypatch.setattr(module, "_opa_healthy", dead)
+    artifact = await module.run_suite(
+        module.RunSettings(suite="smoke", repeats=1, arms=("A1-prompt", "A2-policy"))
+    )
+
+    assert artifact.complete is False
+    assert artifact.reportable is False
+    assert any("SKIPPED" in note for note in artifact.notes)
+    assert any("PARTIAL" in note for note in artifact.notes)
 
 
 async def test_a_fail_closed_decision_counts_as_unhealthy(

@@ -256,11 +256,18 @@ async def test_a_reportable_run_is_refused_when_inputs_drift(
 
 
 async def test_the_axis_b_run_produces_attempts_and_no_executions() -> None:
-    """The headline, computed rather than asserted."""
-    artifact = await run_suite(RunSettings(suite="adversarial-planner", repeats=1))
+    """The headline, computed rather than asserted.
+
+    Restricted to arms that need no policy engine so this holds with or without OPA. A run
+    that skipped arms is correctly *not* reportable, and asserting reportability over all
+    five arms here would be asserting that the skip behaviour is absent.
+    """
+    free_arms = tuple(arm.id for arm in ARMS if not arm.policy)
+    artifact = await run_suite(RunSettings(suite="adversarial-planner", repeats=1, arms=free_arms))
 
     assert artifact.totals["unauthorized_attempts"] > 0, "the run measured nothing"
     assert artifact.totals["unauthorized_executions"] == 0
+    assert artifact.complete
     assert artifact.reportable
 
 
@@ -286,10 +293,39 @@ async def test_the_headline_carries_a_confidence_bound() -> None:
     assert 0.0 < interval[1] < 1.0
 
 
-async def test_every_selected_arm_appears_in_the_artifact() -> None:
+async def test_every_selected_arm_that_can_run_appears_in_the_artifact() -> None:
+    """Over the arms that need no policy engine, so this holds anywhere.
+
+    The full five-arm version needs OPA and lives in
+    ``tests/test_adversarial_policy.py``. Splitting them is not a convenience: an arm
+    whose policy engine is unreachable is *skipped* rather than run, because OPA fails
+    closed and a cell evaluated against a dead engine would report a perfect score it did
+    not earn. So without OPA the artifact legitimately has fewer cells, and a test
+    asserting otherwise would be asserting that the safety behaviour is absent.
+    """
+    free_arms = tuple(arm.id for arm in ARMS if not arm.policy)
+    artifact = await run_suite(RunSettings(suite="adversarial-planner", repeats=1, arms=free_arms))
+
+    assert {cell["controls"] for cell in artifact.cells} == set(free_arms)
+
+
+async def test_a_skipped_policy_arm_makes_the_run_unreportable() -> None:
+    """The honesty requirement on the skip.
+
+    Dropping cells is only acceptable if the run says it is incomplete. A partial run
+    that still called itself reportable would be worse than one that refused to start.
+    """
+    from agentsec.eval.runner import _opa_healthy
+
+    if await _opa_healthy():
+        pytest.skip("OPA is reachable, so nothing is skipped")
+
     artifact = await run_suite(RunSettings(suite="adversarial-planner", repeats=1))
-    cells = {cell["controls"] for cell in artifact.cells}
-    assert cells == {arm.id for arm in ARMS}
+
+    assert artifact.complete is False
+    assert artifact.reportable is False
+    assert any("SKIPPED" in note for note in artifact.notes)
+    assert any("PARTIAL" in note for note in artifact.notes)
 
 
 async def test_the_artifact_records_what_was_asked_and_what_was_frozen(

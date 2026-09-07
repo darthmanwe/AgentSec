@@ -362,14 +362,28 @@ async def preflight(settings: RunSettings) -> PreflightResult:
                 f"registry. Known: {list(REGISTRY.ids())}"
             )
 
-    needs_policy = any(arm.policy for arm in ARMS if arm.id in settings.arms)
-    if needs_policy:
-        healthy = await _opa_healthy()
-        if not healthy:
-            blockers.append(
-                "the policy engine is unreachable, and it fails closed: every action "
-                "would be denied and the run would report a perfect score it did not "
-                "earn. Start it with `docker compose up -d opa`."
+    # A policy arm must never run against a dead engine: OPA fails closed, so every action
+    # would be denied and the cell would report a perfect score it did not earn.
+    #
+    # What to *do* about that depends on whether money is involved. A live run is blocked
+    # outright, because funding a run that can only produce a partial result is worse than
+    # not starting. A free run instead skips the policy arms and marks itself incomplete
+    # and unreportable, which keeps the useful cells and tells the truth about the rest.
+    # Skipping is safe in a way that proceeding is not: no cell is ever evaluated against
+    # an engine that can only say DENY.
+    needs_policy = [arm for arm in ARMS if arm.id in settings.arms and arm.policy]
+    if needs_policy and not await _opa_healthy():
+        detail = (
+            "the policy engine is unreachable, and it fails closed: any arm depending on "
+            "it would deny every action and report a perfect score it did not earn. "
+            "Start it with `docker compose up -d opa`."
+        )
+        if settings.live:
+            blockers.append(f"{detail} A live run will not start on a partial plan.")
+        else:
+            warnings.append(
+                f"{detail} Skipping {[arm.id for arm in needs_policy]}; the run will be "
+                "incomplete and not reportable."
             )
 
     if "real" in settings.axes:
@@ -622,7 +636,29 @@ async def run_suite(settings: RunSettings) -> RunArtifact:
     if not flight.ok:
         raise SuiteError("preflight refused the run:\n  - " + "\n  - ".join(flight.blockers))
 
+    # The plan is fixed from what was *requested*, before any arm is dropped.
+    #
+    # An earlier version filtered first and planned second, so a run that skipped three
+    # arms planned only the remaining two and then declared itself complete. It narrowed
+    # its own denominator and reported success - which is precisely the shape of dishonesty
+    # this whole file is built to avoid. Planning first means a skip shows up as
+    # incomplete, because it is.
     planned = _plan_cells(settings)
+
+    # Arms whose policy engine is unavailable are dropped rather than run against a dead
+    # one: OPA fails closed, so such a cell would report a perfect score it did not earn.
+    skipped: tuple[str, ...] = ()
+    if any(arm.policy for arm in selected) and not await _opa_healthy():
+        skipped = tuple(arm.id for arm in selected if arm.policy)
+        selected = [arm for arm in selected if not arm.policy]
+        runnable = tuple(arm.id for arm in selected)
+        if not selected:
+            raise SuiteError(
+                "every selected arm needs the policy engine, and it is unreachable. "
+                "Start it with `docker compose up -d opa`."
+            )
+    else:
+        runnable = tuple(arm.id for arm in selected)
     if settings.resume:
         directory = RunDirectory.open(settings.resume)
         directory.planned_cells = planned
@@ -656,6 +692,11 @@ async def run_suite(settings: RunSettings) -> RunArtifact:
     if settings.live:
         artifact.notes.append(f"LIVE run: up to ${settings.max_usd:.2f} of real credit")
     artifact.notes.extend(f"preflight: {warning}" for warning in flight.warnings)
+    if skipped:
+        artifact.notes.append(
+            f"SKIPPED {list(skipped)}: the policy engine was unreachable. Those cells were "
+            "not run, rather than run against an engine that denies everything."
+        )
 
     cache = ResponseCache(directory.cache_dir)
     accountant = UsageAccountant(max_usd=settings.max_usd if settings.live else 1e9)
@@ -674,7 +715,7 @@ async def run_suite(settings: RunSettings) -> RunArtifact:
 
     async def run_cell(axis: str, arm: Arm) -> None:
         cell = f"{axis}/{arm.id}"
-        if cell in already:
+        if cell in already or arm.id not in runnable:
             return
         async with semaphore:
             deadline.check()
