@@ -95,6 +95,11 @@ check = "ruff check . && ruff format --check . && mypy src && pytest -q"
 "opa-fmt" = "python scripts/toolbox.py opa fmt --list policy"
 # Reclaim sandbox volumes and containers left by a crashed run (AS-031A). Docker
 # Desktop's disk image only ever grows, so leaked workspaces are permanent.
+# Regenerate the benchmark corpus and its answer key (AS-034). The repositories are
+# generated from a declaration so the ground truth cannot drift from the content.
+"gen-corpus" = "python -c \"from agentsec.eval.corpus import generate; m = generate(); print(f'corpus {m.version} hash={m.hash[:16]} repos={len(m.repos)} findings={m.finding_count}')\""
+# Report the attack-corpus counts (AS-035, AS-036).
+"validate-corpus" = "python -c \"import json; from agentsec.eval.attacks import validate; print(json.dumps(validate(), indent=2))\""
 reap = "python -c \"from agentsec.sandbox import reap; r = reap(); print(f'reclaimed {r.total} sandbox artifacts')\""
 "compose-config" = "docker compose config --quiet"
 

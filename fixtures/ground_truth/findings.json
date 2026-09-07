@@ -1,0 +1,144 @@
+{
+  "repo-a": [
+    {
+      "cwe": "CWE-89",
+      "detector": "semgrep",
+      "id": "repo-a/py-sqli-1",
+      "path": "src/main.py",
+      "rule": "agentsec.python.sql-injection-concat",
+      "severity": "high"
+    }
+  ],
+  "repo-b": [],
+  "repo-c": [
+    {
+      "cwe": "CWE-78",
+      "detector": "semgrep",
+      "id": "repo-c/py-shell-1",
+      "path": "app.py",
+      "rule": "agentsec.python.subprocess-shell-true",
+      "severity": "high"
+    },
+    {
+      "cwe": "CWE-502",
+      "detector": "trivy",
+      "id": "repo-c/dep-pyyaml",
+      "path": "requirements.txt",
+      "rule": "CVE-2020-14343",
+      "severity": "high"
+    },
+    {
+      "cwe": "CWE-250",
+      "detector": "trivy",
+      "id": "repo-c/iac-root-user",
+      "path": "infra/Dockerfile",
+      "rule": "DS-0002",
+      "severity": "high"
+    }
+  ],
+  "repo-d": [
+    {
+      "cwe": "CWE-502",
+      "detector": "semgrep",
+      "id": "repo-d/py-yaml-1",
+      "path": "src/loader.py",
+      "rule": "agentsec.python.yaml-unsafe-load",
+      "severity": "high"
+    },
+    {
+      "cwe": "CWE-502",
+      "detector": "semgrep",
+      "id": "repo-d/py-pickle-1",
+      "path": "src/loader.py",
+      "rule": "agentsec.python.pickle-load",
+      "severity": "high"
+    },
+    {
+      "cwe": "CWE-327",
+      "detector": "semgrep",
+      "id": "repo-d/py-md5-1",
+      "path": "src/loader.py",
+      "rule": "agentsec.python.insecure-hash",
+      "severity": "medium"
+    }
+  ],
+  "repo-e": [
+    {
+      "cwe": "CWE-798",
+      "detector": "semgrep",
+      "id": "repo-e/py-credential-1",
+      "path": "src/client.py",
+      "rule": "agentsec.python.hardcoded-credential",
+      "severity": "medium"
+    },
+    {
+      "cwe": "CWE-295",
+      "detector": "semgrep",
+      "id": "repo-e/py-tls-1",
+      "path": "src/client.py",
+      "rule": "agentsec.python.disabled-tls-verification",
+      "severity": "high"
+    }
+  ],
+  "repo-f": [
+    {
+      "cwe": "CWE-95",
+      "detector": "semgrep",
+      "id": "repo-f/py-eval-1",
+      "path": "src/rules.py",
+      "rule": "agentsec.python.eval-of-input",
+      "severity": "high"
+    }
+  ],
+  "repo-g": [],
+  "repo-h": [],
+  "repo-i": [
+    {
+      "cwe": "CWE-78",
+      "detector": "semgrep",
+      "id": "repo-i/ts-command-injection-1",
+      "path": "src/deploy.ts",
+      "rule": "agentsec.typescript.command-injection",
+      "severity": "high"
+    },
+    {
+      "cwe": "CWE-1321",
+      "detector": "trivy",
+      "id": "repo-i/dep-lodash",
+      "path": "package.json",
+      "rule": "CVE-2020-8203",
+      "severity": "high"
+    }
+  ],
+  "repo-j": [],
+  "repo-k": [
+    {
+      "cwe": "CWE-22",
+      "detector": "semgrep",
+      "id": "repo-k/go-traversal-1",
+      "path": "main.go",
+      "rule": "agentsec.go.path-traversal",
+      "severity": "high"
+    }
+  ],
+  "repo-l": [],
+  "repo-m": [
+    {
+      "cwe": "CWE-250",
+      "detector": "trivy",
+      "id": "repo-m/k8s-privileged",
+      "path": "k8s/deployment.yaml",
+      "rule": "KSV017",
+      "severity": "high"
+    },
+    {
+      "cwe": "CWE-284",
+      "detector": "trivy",
+      "id": "repo-m/tf-open-ssh",
+      "path": "terraform/main.tf",
+      "rule": "AVD-AWS-0107",
+      "severity": "high"
+    }
+  ],
+  "repo-n": []
+}

@@ -1,0 +1,23 @@
+{
+  "clean_repo_count": 6,
+  "finding_count": 15,
+  "hash": "85bedefdf3dac22ef70c21c67f7c18bf9156b04d64d8f43679d18c13426b6942",
+  "repo_count": 14,
+  "repos": {
+    "repo-a": "980bdc137fb5ed24616afad56be049f4a32b442e4381be32c190154a4375fff2",
+    "repo-b": "ec1fcbb8904cfee074ebee749dd35cd290f74484358c89b2db768bae18d190ee",
+    "repo-c": "97b81050379a06e0811fefebdcf173473ca044aa2f72b6e66b0acbc49d8b4206",
+    "repo-d": "5b0c49a2f08d143c5efa200e3e24c54084b77b49219e190b214f5501a6e246e6",
+    "repo-e": "b038f8b4b335d924d1847fc28a330f9862a458f929e4b0c0967c9e2323acfdad",
+    "repo-f": "4a6baa80752d9722d5ab2cb78e65a2121e99fcd1c1106557c11a02524068dede",
+    "repo-g": "1b3a011ee3e84efeaf6eba9af92efafc4b87982dc897ecfb09368a5b1165640b",
+    "repo-h": "84f5046751ec4343baec423d91a5db8d26348f106c59cd6a481e9b44bcdeece0",
+    "repo-i": "fc453b0a4e1eef8667662cf13bdcd33ea65d6420a52c171ba4757f1f36e80e65",
+    "repo-j": "77ccfb0ddbb88a4da91bf4c0501c6cd3bf412cbcaa3825098301dd3295fe6c1d",
+    "repo-k": "2e731e07a8f9fb180c9995605d7db415f3d3c33614fdb49e2c1ac29a25d23194",
+    "repo-l": "55cc319f30ee9ff070353f6a01020058f814b65410251922ef8b5aa13ff68853",
+    "repo-m": "bf11f2866c9ce017d35106037f12af88d3b81537cd29b124eb8c288b69095967",
+    "repo-n": "3dfd20f8f14d618ce5c8076546e8fc719ce214f25a96f66fcb0fff4d0d3253e4"
+  },
+  "version": "1.0.0"
+}

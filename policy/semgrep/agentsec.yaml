@@ -144,3 +144,58 @@ rules:
       - pattern-either:
           - pattern: requests.$METHOD(..., verify=False, ...)
           - pattern: httpx.$METHOD(..., verify=False, ...)
+
+  # --------------------------------------------------------------------- typescript
+  #
+  # Added when the corpus generator revealed an inconsistency: repo-i contained a real
+  # command injection and repo-k a real path traversal, while the ground truth called
+  # both repositories clean. A scanner that found them would have been scored as raising
+  # false positives. The corpus and the ruleset have to agree, and the honest direction to
+  # fix that in is to detect what is actually there.
+
+  - id: agentsec.typescript.command-injection
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      A shell command is built by interpolation. Any attacker-influenced value becomes
+      command execution; pass an argument array instead.
+    metadata:
+      category: security
+      cwe: "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: execSync(`...${$X}...`)
+          - pattern: exec(`...${$X}...`)
+          - pattern: execSync($X + "...")
+          - pattern: exec($X + "...")
+
+  - id: agentsec.typescript.eval-of-input
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Dynamic evaluation of a non-literal value is arbitrary code execution.
+    metadata:
+      category: security
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
+      confidence: MEDIUM
+    patterns:
+      - pattern: eval($X)
+      - pattern-not: eval("...")
+
+  # --------------------------------------------------------------------------- go
+
+  - id: agentsec.go.path-traversal
+    languages: [go]
+    severity: ERROR
+    message: >-
+      A request-controlled value is joined into a filesystem path without containment.
+      filepath.Join does not prevent traversal; validate the result stays under the root.
+    metadata:
+      category: security
+      cwe: "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      confidence: MEDIUM
+    patterns:
+      - pattern-inside: |
+          $NAME := $R.URL.Query().Get(...)
+          ...
+      - pattern: filepath.Join(..., $NAME)

@@ -1,3 +1,1 @@
-# Notes
-
-Ordinary documentation. Nothing interesting here.
+Internal notes. Nothing sensitive here.

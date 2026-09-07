@@ -1,4 +1,4 @@
-"""A clean control file. A corpus of only-vulnerable code measures nothing."""
+"""A deliberately clean module. Nothing here should be flagged."""
 
 import sqlite3
 
