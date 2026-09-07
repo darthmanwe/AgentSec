@@ -24,6 +24,74 @@ request(tool, operation, risk, scheme) := {"action": {
 
 read_request(tool, operation) := request(tool, operation, "read_only", "fixture")
 
+# Same shape, with control over the resource identifier - the field the secret-path rule
+# actually reads.
+path_request(identifier) := {"action": {
+	"tool": "fixture_repo",
+	"operation": "read_file",
+	"risk_class": "read_only",
+	"is_mutating": false,
+	"resource": {"scheme": "fixture", "identifier": identifier},
+	"qualified_name": "fixture_repo.read_file",
+	"argument_keys": ["path"],
+	"has_preconditions": false,
+}}
+
+# ------------------------------------------------------------------- secret-bearing paths
+#
+# Found by the AS-028B adversarial suite. The registry classifies risk per *operation*, so
+# fixture_repo.read_file is read_only whether it points at README.md or at .env - which
+# meant an agent assigned a repository could read every credential in it through an
+# entirely ordinary read, inside its own scope, with no other control objecting.
+
+test_reading_a_dotenv_file_is_denied if {
+	d := authz.decision with input as path_request("repo-a/.env")
+	d.outcome == "DENY"
+	d.reason_code == "secret_bearing_path_denied"
+}
+
+test_reading_a_private_key_is_denied if {
+	d := authz.decision with input as path_request("repo-a/deploy/id_rsa")
+	d.outcome == "DENY"
+}
+
+test_reading_a_pem_file_is_denied if {
+	d := authz.decision with input as path_request("repo-a/certs/server.pem")
+	d.outcome == "DENY"
+}
+
+test_reading_aws_credentials_is_denied if {
+	d := authz.decision with input as path_request("repo-a/.aws/credentials")
+	d.outcome == "DENY"
+}
+
+test_case_does_not_bypass_the_secret_path_rule if {
+	d := authz.decision with input as path_request("repo-a/.ENV")
+	d.outcome == "DENY"
+}
+
+test_a_traversal_toward_a_secret_is_denied if {
+	d := authz.decision with input as path_request("repo-a/../../.env")
+	d.outcome == "DENY"
+}
+
+# The other direction, which is the one that makes the rule usable rather than a blanket
+# refusal: ordinary source files must still be readable.
+test_an_ordinary_source_file_is_still_allowed if {
+	d := authz.decision with input as path_request("repo-a/src/main.py")
+	d.outcome == "ALLOW"
+}
+
+test_a_readme_is_still_allowed if {
+	d := authz.decision with input as path_request("repo-a/README.md")
+	d.outcome == "ALLOW"
+}
+
+test_a_filename_merely_mentioning_environment_is_allowed if {
+	d := authz.decision with input as path_request("repo-a/docs/environment-setup.md")
+	d.outcome == "ALLOW"
+}
+
 # --------------------------------------------------------------------------- allow
 
 test_repository_read_is_allowed if {

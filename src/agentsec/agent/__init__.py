@@ -7,6 +7,7 @@ service, directly or transitively. The planner proposes; it never authorises.
 """
 
 from agentsec.agent.accounting import BudgetExceededError, Reservation, UsageAccountant
+from agentsec.agent.adversarial import SCENARIOS, AdversarialPlanner, AttackGoal, AttackScenario
 from agentsec.agent.planner import ACTION_PLAN_SCHEMA, BoundedPlanner, PlanningResult
 from agentsec.agent.prompts import REGISTRY, Prompt, PromptError, PromptRegistry
 from agentsec.agent.provider import (
@@ -31,7 +32,11 @@ __all__ = [
     "ACTION_PLAN_SCHEMA",
     "MODEL_CAPABILITIES",
     "REGISTRY",
+    "SCENARIOS",
+    "AdversarialPlanner",
     "AnthropicProvider",
+    "AttackGoal",
+    "AttackScenario",
     "BoundedPlanner",
     "BudgetExceededError",
     "Effort",

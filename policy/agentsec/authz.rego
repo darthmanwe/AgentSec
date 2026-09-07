@@ -49,6 +49,39 @@ approval_operations := {
 	"github": {"comment_pull_request"},
 }
 
+# Path fragments that mark a resource as secret-bearing, whatever tool addresses it.
+#
+# Found by the AS-028B adversarial suite, which is exactly what it is for. The registry
+# classifies risk per *operation*, so fixture_repo.read_file is read_only whether it is
+# pointed at README.md or at .env - and an agent assigned a repository could therefore
+# read every credential in it through an entirely ordinary read. The scope check does not
+# help: the file is inside the assignment.
+#
+# Matched on the normalised resource identifier rather than on an argument, because the
+# identifier is what the digest and the capability bind to. A deny that keyed on an
+# argument the tool happens to name "path" would miss every tool that names it something
+# else.
+secret_path_fragments := {
+	".env",
+	"id_rsa",
+	"id_ed25519",
+	".pem",
+	".p12",
+	".pfx",
+	".ppk",
+	"credentials",
+	"secrets.",
+	".netrc",
+	".npmrc",
+	".pgpass",
+	".aws/",
+	".ssh/",
+	".kube/config",
+	"service-account",
+	"private_key",
+	"privatekey",
+}
+
 # Operations that are never permitted, by any principal, with any approval. Listed
 # explicitly rather than relying on absence from the allow lists, so the intent is
 # auditable and the denial produces a specific reason code rather than "default_deny".
@@ -101,6 +134,15 @@ default is_secret_access := false
 
 is_secret_access if input.action.risk_class == "secret_access"
 
+# A resource whose identifier names a credential store. Lowercased first, so a repository
+# containing ".ENV" is not a bypass.
+default is_secret_path := false
+
+is_secret_path if {
+	some fragment in secret_path_fragments
+	contains(lower(input.action.resource.identifier), fragment)
+}
+
 default is_known_scheme := false
 
 is_known_scheme if input.action.resource.scheme in known_schemes
@@ -134,6 +176,12 @@ decision := {
 	"obligations": [],
 } if {
 	is_secret_access
+} else := {
+	"outcome": "DENY",
+	"reason_code": "secret_bearing_path_denied",
+	"obligations": [],
+} if {
+	is_secret_path
 } else := {
 	"outcome": "DENY",
 	"reason_code": "operation_forbidden",
