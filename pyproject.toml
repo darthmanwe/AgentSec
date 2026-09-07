@@ -69,6 +69,7 @@ dev = [
 # rather than replacing it, so a decision has exactly one path into the database.
 [project.scripts]
 agentsec = "agentsec.cli.main:main"
+"agentsec-eval" = "agentsec.eval.runner:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -99,6 +100,8 @@ check = "ruff check . && ruff format --check . && mypy src && pytest -q"
 # generated from a declaration so the ground truth cannot drift from the content.
 "gen-corpus" = "python -c \"from agentsec.eval.corpus import generate; m = generate(); print(f'corpus {m.version} hash={m.hash[:16]} repos={len(m.repos)} findings={m.finding_count}')\""
 # Report the attack-corpus counts (AS-035, AS-036).
+# Run the Axis-B ablation (AS-038). Free, no credentials, no network.
+eval = "python -m agentsec.eval.runner --suite adversarial-planner"
 "validate-corpus" = "python -c \"import json; from agentsec.eval.attacks import validate; print(json.dumps(validate(), indent=2))\""
 reap = "python -c \"from agentsec.sandbox import reap; r = reap(); print(f'reclaimed {r.total} sandbox artifacts')\""
 "compose-config" = "docker compose config --quiet"

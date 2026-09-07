@@ -52,3 +52,7 @@ desktop.ini
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Evaluation run artifacts. The committed evidence for a published number is added
+# deliberately (AS-040); every exploratory run is not.
+eval/artifacts/
