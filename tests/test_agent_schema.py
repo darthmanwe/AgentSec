@@ -204,9 +204,7 @@ def test_an_uncoercible_integer_is_kept_not_dropped() -> None:
 
     Whether it is acceptable is the gateway's decision, not the parser's.
     """
-    assert arguments_from_pairs([{"name": "pull_number", "value": "abc"}]) == {
-        "pull_number": "abc"
-    }
+    assert arguments_from_pairs([{"name": "pull_number", "value": "abc"}]) == {"pull_number": "abc"}
 
 
 def test_a_plain_mapping_still_parses() -> None:

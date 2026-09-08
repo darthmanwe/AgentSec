@@ -156,9 +156,7 @@ def _login_page(message: str = "") -> str:
     warning = f'<p class="warn">{e(message)}</p>' if message else ""
     return _page(
         "AgentSec — sign in",
-        "<h1>AgentSec approvals</h1>"
-        + warning
-        + '<form method=post action="/login">'
+        "<h1>AgentSec approvals</h1>" + warning + '<form method=post action="/login">'
         "<p><label>Operator token <input type=password name=token autocomplete=off></label></p>"
         "<p><button type=submit>Sign in</button></p></form>"
         "<p><small>Demo-grade authentication: a shared token, as the threat model states. "

@@ -194,11 +194,16 @@ async def test_unparseable_output_is_reported_rather_than_raised() -> None:
     crash. Schema validation is necessary and not sufficient; the semantic checks in
     AS-026 run afterwards either way."""
     provider = MockProvider(default_response="I refuse to answer in JSON.")
-    response = await provider.complete(request(HAIKU, output_schema={
+    response = await provider.complete(
+        request(
+            HAIKU,
+            output_schema={
                 "type": "object",
                 "additionalProperties": False,
                 "properties": {"a": {"type": "string"}},
-            }))
+            },
+        )
+    )
 
     assert response.parsed is None
     assert response.text

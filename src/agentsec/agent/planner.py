@@ -130,8 +130,6 @@ assert count_optional_properties(ACTION_PLAN_SCHEMA) <= MAX_OPTIONAL_PROPERTIES,
 planner rather than on the first call of a funded run."""
 
 
-
-
 class PlanningError(Exception):
     """Planning could not produce a usable result."""
 

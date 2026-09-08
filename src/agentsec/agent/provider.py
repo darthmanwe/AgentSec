@@ -228,7 +228,6 @@ class ModelProvider(Protocol):
     async def complete(self, request: ModelRequest) -> ModelResponse: ...
 
 
-
 def response_usd(response: ModelResponse) -> float:
     """What one response cost *this run*.
 
@@ -268,7 +267,6 @@ def build_thinking(capabilities: ModelCapabilities, budget: int | None) -> dict[
         "type": "enabled",
         "budget_tokens": budget or capabilities.default_thinking_budget,
     }
-
 
 
 def effective_max_tokens(request: ModelRequest) -> int:
