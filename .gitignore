@@ -35,6 +35,7 @@ keys/
 # under eval/results/published/, never swept in by a wildcard.
 eval/artifacts/
 eval/runs/
+eval/logs/
 !eval/results/published/
 
 # --- vendored scanner data ------------------------------------------------
