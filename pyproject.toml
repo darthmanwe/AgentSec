@@ -47,6 +47,11 @@ dependencies = [
     # the 1.x line moves fast and a planner that behaves differently between runs would
     # make every ablation number unreproducible.
     "langgraph==1.2.11",
+    # AS-042: the approval UI. Both arrive transitively via `mcp`, and are declared
+    # here because this package imports them directly - a dependency that is only
+    # present because something else happens to want it disappears without warning.
+    "starlette==1.6.0",
+    "uvicorn==0.52.4",
 ]
 
 [dependency-groups]
@@ -72,6 +77,7 @@ agentsec = "agentsec.cli.main:main"
 "agentsec-eval" = "agentsec.eval.runner:main"
 "agentsec-report" = "agentsec.eval.report:main"
 "agentsec-replay" = "agentsec.observability.cli:main"
+"agentsec-ui" = "agentsec.ui.__main__:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -117,6 +123,8 @@ report = "python -m agentsec.eval.report"
 # Replay an audit trail and check the invariant against it (AS-041). Exits non-zero
 # on any execution the trail cannot justify, so it can gate a pipeline.
 replay = "python -m agentsec.observability.cli"
+# The approval UI (AS-042). Localhost only; demo-grade shared-token login.
+ui = "python -m agentsec.ui --host 127.0.0.1 --port 8080"
 "validate-corpus" = "python -c \"import json; from agentsec.eval.attacks import validate; print(json.dumps(validate(), indent=2))\""
 reap = "python -c \"from agentsec.sandbox import reap; r = reap(); print(f'reclaimed {r.total} sandbox artifacts')\""
 "compose-config" = "docker compose config --quiet"
