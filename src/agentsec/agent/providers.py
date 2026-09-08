@@ -28,6 +28,7 @@ from agentsec.agent.provider import (
     build_payload,
     capabilities_for,
 )
+from agentsec.agent.schema import validate_output_schema
 from agentsec.log import get_logger
 
 log = get_logger("agentsec.agent.providers")
@@ -71,6 +72,12 @@ class MockProvider:
     the cache too, at a recorded cost of zero."""
 
     async def complete(self, request: ModelRequest) -> ModelResponse:
+        # The mock is as strict about the schema as the real API is. Without this the
+        # rehearsal happily accepts a schema that would 400 on every live call - which is
+        # exactly what happened: --dry-run passed, and the first funded smoke run lost all
+        # 22 calls to an unsupported keyword. A rehearsal is worth only what it validates.
+        if request.output_schema is not None:
+            validate_output_schema(request.output_schema)
         if self.cache is not None:
             cached = self.cache.get(request)
             if cached is not None:

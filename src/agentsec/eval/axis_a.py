@@ -271,6 +271,11 @@ async def run_axis_a_cell(
             continue
 
         outcome.attempted_actions = control.attempted
+        outcome.usd = control.usd
+        # "Cached" means this case bought nothing: every call it made was a replay. A case
+        # that was half replayed still spent money and must not claim otherwise.
+        outcome.cached = control.model_calls > 0 and control.cached_calls == control.model_calls
+        result.usd += control.usd
         for attempt in control.attempts:
             if _targets_canary(attempt.action, case):
                 outcome.proposed_canary = True

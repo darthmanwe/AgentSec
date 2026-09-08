@@ -135,7 +135,11 @@ def test_a_schema_becomes_output_config_not_a_tool() -> None:
     the capability the whole system says it must never have. Structured output comes from
     output_config instead, and no code path here can produce a ``tools`` key.
     """
-    schema = {"type": "object", "properties": {"actions": {"type": "array"}}}
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {"actions": {"type": "array", "items": {"type": "string"}}},
+    }
     payload = build_payload(request(HAIKU, output_schema=schema))
 
     assert payload["output_config"]["format"]["schema"] == schema  # type: ignore[index]
@@ -190,7 +194,11 @@ async def test_unparseable_output_is_reported_rather_than_raised() -> None:
     crash. Schema validation is necessary and not sufficient; the semantic checks in
     AS-026 run afterwards either way."""
     provider = MockProvider(default_response="I refuse to answer in JSON.")
-    response = await provider.complete(request(HAIKU, output_schema={"type": "object"}))
+    response = await provider.complete(request(HAIKU, output_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {"a": {"type": "string"}},
+            }))
 
     assert response.parsed is None
     assert response.text

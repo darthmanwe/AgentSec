@@ -27,6 +27,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Protocol, runtime_checkable
 
+from agentsec.agent.schema import validate_output_schema
+from agentsec.log import get_logger
+
+log = get_logger("agentsec.agent.provider")
+
 #: The date the price table below was read from Anthropic's published pricing. Recorded
 #: because a cost ceiling computed from stale prices is a ceiling in name only.
 PRICING_PINNED: Final = "2026-08-31"
@@ -223,6 +228,29 @@ class ModelProvider(Protocol):
     async def complete(self, request: ModelRequest) -> ModelResponse: ...
 
 
+
+def response_usd(response: ModelResponse) -> float:
+    """What one response cost *this run*.
+
+    A replayed cache entry cost nothing now, whatever it cost when it was bought — that is
+    the whole point of the cache, and charging a resume for calls it did not make would
+    make a resumed run look more expensive than the run it completed. The mock costs
+    nothing by construction.
+
+    Returns 0.0 for a model absent from the capability table rather than raising: the
+    response records what the API actually served, an alias can be repointed to a snapshot
+    the table has never seen, and per-cell attribution is not the authority on spend. The
+    ``UsageAccountant`` is, and it is what enforces the ceiling.
+    """
+    if response.metadata.get("cached") or response.provider == "mock":
+        return 0.0
+    capabilities = MODEL_CAPABILITIES.get(response.model)
+    if capabilities is None:
+        log.warning("cannot price response; model absent from the table", model=response.model)
+        return 0.0
+    return capabilities.cost_usd(response.usage.input_tokens, response.usage.output_tokens)
+
+
 def build_thinking(capabilities: ModelCapabilities, budget: int | None) -> dict[str, Any] | None:
     """Shape the thinking configuration for one model.
 
@@ -242,6 +270,38 @@ def build_thinking(capabilities: ModelCapabilities, budget: int | None) -> dict[
     }
 
 
+
+def effective_max_tokens(request: ModelRequest) -> int:
+    """The ``max_tokens`` that will actually be sent, thinking included.
+
+    Extended thinking is *drawn from* ``max_tokens`` rather than added alongside it, and
+    the API requires strictly more than the thinking budget so there is room left to
+    answer. The capability table did not encode that, so a 4,096-token request against a
+    model whose default thinking budget is also 4,096 produced::
+
+        400 `max_tokens` must be greater than `thinking.budget_tokens`
+
+    on every call of a funded smoke run. ``max_output_tokens`` therefore means *tokens for
+    the answer*, and the thinking budget is added on top before the model ceiling is
+    applied.
+
+    Exposed rather than inlined because the cost projection must price the request that
+    will really be sent. It previously hardcoded 4,096 and would have under-quoted the run
+    the moment these numbers diverged.
+    """
+    capabilities = capabilities_for(request.model)
+    thinking = build_thinking(capabilities, request.thinking_budget)
+    budget = int(thinking.get("budget_tokens", 0)) if thinking else 0
+    total = min(request.max_output_tokens + budget, capabilities.max_output_tokens)
+    if budget and total <= budget:
+        raise ProviderError(
+            f"{request.model}: a thinking budget of {budget} leaves no room to answer "
+            f"within the model's {capabilities.max_output_tokens}-token ceiling. Lower "
+            f"the budget or raise max_output_tokens."
+        )
+    return total
+
+
 def build_payload(request: ModelRequest) -> dict[str, Any]:
     """Turn a provider-neutral request into an Anthropic Messages payload.
 
@@ -256,7 +316,7 @@ def build_payload(request: ModelRequest) -> dict[str, Any]:
         "model": request.model,
         "system": request.system,
         "messages": [{"role": m.role, "content": m.content} for m in request.messages],
-        "max_tokens": min(request.max_output_tokens, capabilities.max_output_tokens),
+        "max_tokens": effective_max_tokens(request),
     }
 
     thinking = build_thinking(capabilities, request.thinking_budget)
@@ -265,6 +325,10 @@ def build_payload(request: ModelRequest) -> dict[str, Any]:
 
     output_config: dict[str, Any] = {}
     if request.output_schema is not None:
+        # Checked before dispatch, not after a 400. The funded run's first smoke attempt
+        # lost all 22 calls to a schema keyword the API refuses; the request never had to
+        # leave the process to be known bad.
+        validate_output_schema(request.output_schema)
         output_config["format"] = {
             "type": "json_schema",
             "schema": request.output_schema,

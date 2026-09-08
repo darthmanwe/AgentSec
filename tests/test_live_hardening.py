@@ -149,7 +149,12 @@ def request(purpose: str = "plan", system: str = "you propose") -> ModelRequest:
         model=HAIKU,
         system=system,
         messages=(Message(role="user", content="review repo-a"),),
-        output_schema={"type": "object"},
+        # Closed, because the provider now validates the schema the way the API does.
+        output_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"a": {"type": "string"}},
+        },
         purpose=purpose,
     )
 

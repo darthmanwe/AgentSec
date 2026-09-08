@@ -37,31 +37,51 @@ from langgraph.graph import END, StateGraph
 
 from agentsec.agent.prompts import REGISTRY, PromptRegistry
 from agentsec.agent.provider import Message, ModelProvider, ModelRequest, ModelResponse
+from agentsec.agent.schema import (
+    MAX_OPTIONAL_PROPERTIES,
+    action_arguments_schema,
+    arguments_from_pairs,
+    count_optional_properties,
+    validate_output_schema,
+)
 from agentsec.agent.state import Hypothesis, ProposedAction, SecurityAgentState
 from agentsec.log import get_logger
 
 log = get_logger("agentsec.agent.planner")
 
 #: The shape the model is asked to return. A schema, never a tool declaration.
+#: Tokens allowed for the plan itself, and for the thinking that precedes it. Stated here
+#: rather than inherited from the model's default because the two interact: thinking is
+#: drawn from the same ceiling, and a budget equal to the answer allowance is a 400 rather
+#: than a degraded answer. Their sum is what the run is priced at.
+PLAN_MAX_OUTPUT_TOKENS: Final = 2_048
+PLAN_THINKING_BUDGET: Final = 2_048
+
+#: Hard cap on actions accepted from one response, applied after parsing as well as in the
+#: schema. A model that ignores maxItems must not be able to make the plan unbounded.
+MAX_ACTIONS: Final = 20
+
 ACTION_PLAN_SCHEMA: Final[dict[str, Any]] = {
     "type": "object",
     "additionalProperties": False,
-    "required": ["hypotheses", "actions"],
+    "required": ["hypotheses", "actions", "injection_observed"],
     "properties": {
         "hypotheses": {
             "type": "array",
-            "maxItems": 20,
+            "description": f"At most {MAX_ACTIONS} hypotheses.",
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["id", "statement"],
+                # Required rather than optional wherever the model can always answer:
+                # optional properties are capped at MAX_OPTIONAL_PROPERTIES across the
+                # whole document, and required ones cost nothing against it.
+                "required": ["id", "statement", "confidence", "supporting_item_ids"],
                 "properties": {
                     "id": {"type": "string", "maxLength": 64},
                     "statement": {"type": "string", "maxLength": 2000},
                     "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
                     "supporting_item_ids": {
                         "type": "array",
-                        "maxItems": 20,
                         "items": {"type": "string", "maxLength": 128},
                     },
                 },
@@ -69,16 +89,16 @@ ACTION_PLAN_SCHEMA: Final[dict[str, Any]] = {
         },
         "actions": {
             "type": "array",
-            "maxItems": 20,
+            "description": f"At most {MAX_ACTIONS} actions. Anything beyond that is dropped.",
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["tool", "operation", "resource"],
+                "required": ["tool", "operation", "resource", "arguments", "rationale"],
                 "properties": {
                     "tool": {"type": "string", "maxLength": 128},
                     "operation": {"type": "string", "maxLength": 128},
                     "resource": {"type": "string", "maxLength": 512},
-                    "arguments": {"type": "object"},
+                    "arguments": action_arguments_schema(),
                     "rationale": {"type": "string", "maxLength": 2000},
                     "hypothesis_id": {"type": "string", "maxLength": 64},
                 },
@@ -93,10 +113,23 @@ ACTION_PLAN_SCHEMA: Final[dict[str, Any]] = {
         },
     },
 }
+"""The shape the model is asked to return. A schema, never a tool declaration.
 
-#: Hard cap on actions accepted from one response, applied after parsing as well as in the
-#: schema. A model that ignores maxItems must not be able to make the plan unbounded.
-MAX_ACTIONS: Final = 20
+Bounds on array length live in ``description`` rather than ``maxItems``, which structured
+output rejects (``agent/schema.py``). Nothing is lost: the cap was always enforced after
+parsing in :meth:`BoundedPlanner._compile`, because a model that ignores a schema bound
+must not be able to make the plan unbounded either way.
+"""
+
+validate_output_schema(ACTION_PLAN_SCHEMA)
+assert count_optional_properties(ACTION_PLAN_SCHEMA) <= MAX_OPTIONAL_PROPERTIES, (
+    f"the plan schema has {count_optional_properties(ACTION_PLAN_SCHEMA)} optional "
+    f"properties; structured output accepts at most {MAX_OPTIONAL_PROPERTIES}"
+)
+"""Checked at import, so a schema the API would refuse fails in any test that touches the
+planner rather than on the first call of a funded run."""
+
+
 
 
 class PlanningError(Exception):
@@ -133,7 +166,8 @@ class BoundedPlanner:
     prompts: PromptRegistry = field(default_factory=lambda: REGISTRY)
     model: str = "claude-haiku-4-5-20251001"
     system_prompt_id: str = "planner.system"
-    max_output_tokens: int = 4_096
+    max_output_tokens: int = PLAN_MAX_OUTPUT_TOKENS
+    thinking_budget: int = PLAN_THINKING_BUDGET
     sample_tag: str = ""
     """Distinguishes repeated samples of the *same* question.
 
@@ -302,6 +336,7 @@ class BoundedPlanner:
             system=system,
             messages=(Message(role="user", content=user),),
             max_output_tokens=self.max_output_tokens,
+            thinking_budget=self.thinking_budget,
             output_schema=ACTION_PLAN_SCHEMA,
             purpose=self._purpose(state),
         )
@@ -344,13 +379,15 @@ class BoundedPlanner:
                 result.rejected.append(f"{label}: resource {resource!r} is out of scope")
                 continue
 
-            arguments = raw.get("arguments")
+            # Arrives as name/value pairs, because a closed object of 19 optional
+            # properties exceeds the API's optional-property ceiling on its own.
+            arguments = arguments_from_pairs(raw.get("arguments"))
             actions.append(
                 ProposedAction(
                     tool=tool,
                     operation=operation,
                     resource=resource,
-                    arguments=arguments if isinstance(arguments, dict) else {},
+                    arguments=arguments,
                     rationale=str(raw.get("rationale") or "")[:2000],
                     hypothesis_id=str(raw["hypothesis_id"]) if raw.get("hypothesis_id") else None,
                 )

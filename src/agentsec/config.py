@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import enum
 import json
-from typing import Any, Self
+from typing import Any, Final, Self
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -51,7 +51,15 @@ class ModelSettings(BaseSettings):
       published benchmark must not change when an alias is repointed.
     """
 
-    model_config = SettingsConfigDict(env_prefix="AGENTSEC_MODEL_", extra="forbid")
+    model_config = SettingsConfigDict(
+        env_prefix="AGENTSEC_MODEL_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        # The dotenv source hands every key to every group. Unknown nested keys are
+        # caught by Settings._route_nested_group_keys, which knows which group owns
+        # each prefix; forbidding here would only reject the other groups' keys.
+        extra="ignore",
+    )
 
     headline: str = "claude-opus-5"
     bulk: str = "claude-haiku-4-5-20251001"
@@ -65,7 +73,15 @@ class BudgetSettings(BaseSettings):
     money is gone.
     """
 
-    model_config = SettingsConfigDict(env_prefix="AGENTSEC_BUDGET_", extra="forbid")
+    model_config = SettingsConfigDict(
+        env_prefix="AGENTSEC_BUDGET_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        # The dotenv source hands every key to every group. Unknown nested keys are
+        # caught by Settings._route_nested_group_keys, which knows which group owns
+        # each prefix; forbidding here would only reject the other groups' keys.
+        extra="ignore",
+    )
 
     max_usd: float = Field(default=25.0, gt=0, le=1000.0)
     """Abort the run rather than exceed this. Deliberately low by default."""
@@ -77,7 +93,15 @@ class BudgetSettings(BaseSettings):
 class AuthzSettings(BaseSettings):
     """Authorization kernel timings and key identity."""
 
-    model_config = SettingsConfigDict(env_prefix="AGENTSEC_AUTHZ_", extra="forbid")
+    model_config = SettingsConfigDict(
+        env_prefix="AGENTSEC_AUTHZ_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        # The dotenv source hands every key to every group. Unknown nested keys are
+        # caught by Settings._route_nested_group_keys, which knows which group owns
+        # each prefix; forbidding here would only reject the other groups' keys.
+        extra="ignore",
+    )
 
     capability_ttl_seconds: int = Field(default=60, ge=30, le=120)
     """Capability grant lifetime. Bounded by design: long-lived authority is not authority
@@ -95,6 +119,15 @@ class AuthzSettings(BaseSettings):
 
     policy_decision_timeout_seconds: float = Field(default=2.0, gt=0, le=30.0)
     """OPA request timeout. Exceeding it is a DENY, never a fallback-allow."""
+
+
+#: Nested groups keyed by the parent-relative prefix that routes to them. Used to keep
+#: ``extra="forbid"`` meaningful on the root model while the groups read their own keys.
+_NESTED_GROUPS: Final[dict[str, type[BaseSettings]]] = {
+    "model_": ModelSettings,
+    "budget_": BudgetSettings,
+    "authz_": AuthzSettings,
+}
 
 
 class Settings(BaseSettings):
@@ -140,6 +173,46 @@ class Settings(BaseSettings):
     model: ModelSettings = Field(default_factory=ModelSettings)
     budget: BudgetSettings = Field(default_factory=BudgetSettings)
     authz: AuthzSettings = Field(default_factory=AuthzSettings)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _route_nested_group_keys(cls, data: Any) -> Any:
+        """Hand ``AGENTSEC_MODEL_*`` and friends to their own group, without losing strictness.
+
+        The nested groups declare their own ``env_prefix``, so ``AGENTSEC_MODEL_BULK`` is
+        theirs to read. The parent sees the same key, strips ``AGENTSEC_``, finds no
+        ``model_bulk`` field and — under ``extra="forbid"`` — refuses the whole
+        configuration. That made ``.env.example`` unloadable: copying the file the README
+        tells you to copy produced nine validation errors.
+
+        Dropping the keys wholesale would fix the crash and cost the reason ``forbid`` is
+        set, because ``AGENTSEC_MODEL_BULKK`` would then be ignored in silence. So each key
+        is checked against the group that owns it and only then dropped, leaving the group
+        to read it from the environment itself.
+        """
+        if not isinstance(data, dict):
+            return data
+        kept: dict[Any, Any] = {}
+        for key, value in data.items():
+            if not isinstance(key, str):
+                kept[key] = value
+                continue
+            # Extras arrive with the root prefix still attached (``agentsec_model_bulk``),
+            # while an explicit keyword override arrives without it. Accept both.
+            lowered = key.lower().removeprefix("agentsec_")
+            for prefix, group in _NESTED_GROUPS.items():
+                if not lowered.startswith(prefix):
+                    continue
+                field = lowered[len(prefix) :]
+                if field not in group.model_fields:
+                    raise ValueError(
+                        f"AGENTSEC_{lowered.upper()} is not a setting. {group.__name__} accepts "
+                        f"{sorted(group.model_fields)}."
+                    )
+                break
+            else:
+                kept[key] = value
+        return kept
 
     @model_validator(mode="after")
     def _validate_mode_requirements(self) -> Self:

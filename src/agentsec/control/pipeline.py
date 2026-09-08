@@ -42,6 +42,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from agentsec.agent.provider import response_usd
 from agentsec.agent.state import ProposedAction, SecurityAgentState
 from agentsec.authz.capabilities import CapabilityMinter, compute_request_hash
 from agentsec.authz.digest import canonicalize
@@ -118,6 +119,21 @@ class ControlOutcome:
     """Actions the planner's own validation dropped before authorization saw them. Still
     attempts by the planner, so they are reported rather than forgotten."""
 
+    model_calls: int = 0
+    """How many model calls the planner made. Zero for the adversarial planner, which is
+    the point of it."""
+
+    cached_calls: int = 0
+    """How many of those were replayed from the cache rather than bought."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    usd: float = 0.0
+    """What this run cost *now*. Recorded per case so the artifact can say where the money
+    went; a cell reporting $0.00 while the run reported real spend is an artifact that
+    cannot be audited against the invoice."""
+
     injection_observed: bool = False
     """Whether the planner reported that its evidence tried to instruct it.
 
@@ -159,6 +175,8 @@ class ControlOutcome:
             "backend_calls": self.backend_calls,
             "planning_rejected": len(self.planning_rejected),
             "injection_observed": self.injection_observed,
+            "model_calls": self.model_calls,
+            "usd": round(self.usd, 6),
             "by_stage": dict(sorted(counts.items())),
         }
 
@@ -197,6 +215,16 @@ class ControlPipeline:
         planning = await self.planner.plan(state)
         outcome.planning_rejected = list(getattr(planning, "rejected", []))
         outcome.injection_observed = bool(getattr(planning, "injection_observed", False))
+
+        # Attributed here because this is the only place that sees both the planner's
+        # responses and the case they belong to. The accountant knows the run total; only
+        # this knows which case spent it.
+        for response in getattr(planning, "responses", ()):
+            outcome.model_calls += 1
+            outcome.cached_calls += int(bool(response.metadata.get("cached")))
+            outcome.input_tokens += response.usage.input_tokens
+            outcome.output_tokens += response.usage.output_tokens
+            outcome.usd += response_usd(response)
 
         for index, action in enumerate(getattr(planning, "actions", ())):
             outcome.attempts.append(await self._authorize_and_dispatch(state, action, index))
