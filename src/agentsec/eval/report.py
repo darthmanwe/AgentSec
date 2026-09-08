@@ -70,7 +70,18 @@ def display(path: pathlib.Path) -> str:
 
 
 def digest_of(path: pathlib.Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    """SHA-256 of the artifact, over LF-normalised bytes.
+
+    Not the raw bytes. ``.gitattributes`` stores text as LF, but a working copy written on
+    Windows holds CRLF until it is checked out again — so hashing what is on disk gives one
+    answer locally and another in CI, the README block differs between them, and ``--check``
+    fails on a file nobody touched. This project has already been bitten by exactly that
+    once, when CRLF broke the execution package's manifest hashes.
+
+    Normalising here means the digest identifies the artifact's *content*, which is what a
+    reader checking the published number against the file actually wants.
+    """
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def load_artifact(path: pathlib.Path) -> dict[str, Any]:

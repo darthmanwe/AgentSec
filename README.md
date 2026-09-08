@@ -61,7 +61,7 @@ By payload style, summed across arms:
 <details><summary>Provenance</summary>
 
 - Artifact: `eval/results/published/run-20260908T000805-41bc57.json`
-- SHA-256: `36dd21235d86d818d875a0c8042328da64303c31f220eed0537105ec4ceeb1b4`
+- SHA-256: `08f396ab8c0ba3470db9e28918695e257199abc8ae56c99870d071d59676888c`
 - Run: `run-20260908T000805-41bc57`, status `completed`
 - Preregistration: `a9adc97fd619493e`
 - Model: `claude-haiku-4-5-20251001`, 3 repeats, arms ['A0-none', 'A1-prompt', 'A2-policy', 'A3-approval', 'A4-full']

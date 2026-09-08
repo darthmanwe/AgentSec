@@ -253,3 +253,20 @@ def test_the_headline_says_which_axis_it_counts(tmp_path: pathlib.Path) -> None:
     block = report.render(document, source=write(tmp_path, document))
     assert "counts Axis B" in block
     assert "330 Axis-A cases" in block
+
+
+def test_the_digest_is_stable_across_line_endings(tmp_path: pathlib.Path) -> None:
+    """The same artifact must hash the same on Windows and in CI.
+
+    `.gitattributes` stores text as LF, but a working copy written on Windows holds CRLF
+    until it is checked out again. Hashing what is literally on disk gave one answer
+    locally and another in CI, so `--check` failed on a file nobody had touched. This
+    project had already been bitten by the same thing once, when CRLF broke the execution
+    package's manifest hashes.
+    """
+    body = json.dumps(artifact())
+    lf = tmp_path / "lf.json"
+    crlf = tmp_path / "crlf.json"
+    lf.write_bytes(body.encode())
+    crlf.write_bytes(body.replace("\n", "\r\n").encode())
+    assert report.digest_of(lf) == report.digest_of(crlf)
