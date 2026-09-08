@@ -230,6 +230,20 @@ class RunDirectory:
 
     # ------------------------------------------------------------------ progress
 
+    def append_audit(self, records: Any) -> None:
+        """Persist a cell's audit trail as JSON Lines.
+
+        Kept separate from ``events.jsonl``, which is progress reporting, because this file
+        is *evidence*: it is what ``agentsec-replay`` reads to check the invariant without
+        the code that enforced it. Held only in memory, the trail would exist for the
+        duration of a cell and then be summarised into a number nobody could re-derive.
+        """
+        path = self.root / "audit.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            for record in records:
+                handle.write(json.dumps(record.as_row(), sort_keys=True) + "\n")
+
     def append_event(self, event: dict[str, Any]) -> None:
         """Append to the progress log.
 

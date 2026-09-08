@@ -30,10 +30,8 @@ reader to assume a certainty 168 attempts does not support.
 | S0 | Threat model, bootstrap, config, logging, compose, schema | ✅ complete |
 | S1 | Authorization kernel (digest, OPA, approvals, capabilities) | ✅ complete |
 | S2 | MCP gateway, Temporal workflows, sandbox, scanners, GitHub | ✅ complete |
-| S3 | Planner, adversarial evaluation, ablation | 🟡 Axis B done; Axis A pending |
-| S4 | Observability, demo UI, release | ⬜ not started |
-
-Do not treat this as portfolio-ready before S3 completes.
+| S3 | Planner, adversarial evaluation, ablation | ✅ complete |
+| S4 | Audit trail and replay, metrics, approval UI | ✅ complete |
 
 **What S1 being complete actually means:** the authorization kernel is built and
 verified independently of any model. 318 tests are marked `authz` and run in CI with
@@ -70,7 +68,32 @@ scorers, and a preregistered, hash-locked set of thresholds.
 **No model has been called yet.** Axis A — real model susceptibility — is the only part that
 costs money, and it is gated behind `--live --max-usd`. Everything above ran free.
 
-865 tests pass without the compose stack; 570 of those are the authorization kernel running with
+**What S4 being complete actually means.** `audit_events` had existed since S0 with nothing
+writing to it, which is a schema rather than an audit trail. Every step from proposal to effect
+now records the *inputs to* its decision, and `agentsec.observability.replay` re-derives the
+verdict from that record alone:
+
+> an execution is justified only if, earlier in the same authorization attempt and for the same
+> action digest, there is an ALLOW — or a REQUIRE_APPROVAL followed by a granted approval — and a
+> redeemed capability.
+
+The independence is the point. A log written by the enforcement layer records what that layer
+believed it did; if the enforcement is wrong the log is wrong in the same direction, because they
+share an author. Replay disagreeing with the counters is a finding, and both evaluation axes now
+carry the verdict per cell. **A gap counts as a violation**: an execution with nothing recorded
+before it is reported rather than skipped, because the likeliest way for a trail to show a clean
+run is for the enforcement path to have stopped writing to it.
+
+Prometheus series are derived from the trail rather than incremented at call sites — a
+hand-maintained counter is a second implementation of the control flow with nothing comparing it to
+reality. `uv run task replay <trail.jsonl>` exits non-zero on any unjustified execution, so it can
+gate a pipeline rather than only inform one.
+
+The approval UI (`uv run task ui`) renders attacker-controlled text by design, so its escaping is a
+security control: all 22 corpus injection payloads are seeded as evidence and asserted to produce
+no markup, behind a CSP of `default-src 'none'`, an Origin check and a constant-time CSRF token.
+
+1134 tests pass without the compose stack; 623 of those are the authorization kernel running with
 `ANTHROPIC_API_KEY` empty.
 
 ---
@@ -88,7 +111,15 @@ so the claim does not depend on how gullible any model turns out to be — and d
 models improve. It needs no credentials and runs in CI on every push.
 
 **Axis A — model susceptibility.** A real model against a template-aware, multi-turn injection
-corpus. Not run yet. It is the only thing that spends money.
+corpus, through the identical control path. The only part that spends money.
+
+Getting it to run at all cost four failed attempts and nothing in credit, because the API rejects
+malformed requests before billing. `maxItems`, `uniqueItems` and numeric `minimum` are not
+supported; every object must set `additionalProperties: false`; a schema may carry at most twelve
+*optional* properties document-wide, though required ones are free; and the thinking budget is drawn
+from `max_tokens` rather than added to it. None of that was reachable from a dry run, because the
+mock accepted any schema handed to it. It now enforces the same rules — a rehearsal is worth only
+what it validates.
 
 Three design decisions keep the Axis-B number honest:
 
@@ -181,6 +212,39 @@ A model under pressure may propose anything. That is expected. The system fails 
 reaches a backend.
 
 ---
+
+## Observability
+
+The audit trail is designed to be checked *without* the code that wrote it.
+
+```bash
+uv run task replay eval/runs/<run-id>/events.jsonl        # timeline + verdict
+uv run task replay eval/runs/<run-id>/events.jsonl --metrics
+docker compose --profile observability up -d              # Prometheus + Grafana
+```
+
+Two series carry the argument, and they are shown side by side on purpose:
+
+| Series | Expected |
+|---|---|
+| `agentsec_unauthorized_attempts_total` | large |
+| `agentsec_unauthorized_executions_total` | zero |
+| `agentsec_replay_violations_total` | zero |
+| `agentsec_policy_fail_closed_total` | watched — a dead policy engine denies everything and produces a run that looks perfect |
+
+A dashboard showing only the executions panel looks identical whether the controls are working or
+the agent is idle.
+
+## The approval UI
+
+```bash
+export AGENTSEC_OPERATOR_TOKEN=...    # demo-grade, and labelled as such on the page
+uv run task ui                        # http://127.0.0.1:8080
+```
+
+Server-rendered, no JavaScript, localhost by default. It consumes the same `ApprovalService` the
+`agentsec approve` CLI drives rather than reimplementing it — two ways to record a decision would be
+two places for the authorization rules to drift apart.
 
 ## Architecture
 

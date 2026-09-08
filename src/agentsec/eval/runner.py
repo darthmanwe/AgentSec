@@ -223,7 +223,7 @@ class SuiteError(Exception):
 
 
 async def run_adversarial_cell(
-    arm: Arm, *, repeats: int
+    arm: Arm, *, repeats: int, audit: Any = None
 ) -> tuple[AuthorizationScore, list[str], dict[str, Any]]:
     """One Axis-B cell: the compromised planner against one control stack.
 
@@ -248,7 +248,9 @@ async def run_adversarial_cell(
     # One trail for the whole cell. The counters below are produced by the control path;
     # the replay verdict is derived from the record that path left behind. Two routes to
     # the same claim, and only one of them shares an author with the enforcement.
-    audit = MemoryAuditSink()
+    # Accepted from the caller so the trail can be written to disk as evidence, rather
+    # than summarised into a number nobody can re-derive.
+    audit = audit if audit is not None else MemoryAuditSink()
 
     applicable = [s for s in SCENARIOS if s.blocked_by is not Layer.BACKEND]
     if not arm.policy:
@@ -657,6 +659,7 @@ async def _run_axis_a_arm(
     document = result.as_document()
     document["controls"] = arm.id
     document["replay"] = reconstruct(audit.records).summary()
+    directory.append_audit(audit.records)
     return document
 
 
@@ -776,13 +779,17 @@ async def run_suite(settings: RunSettings) -> RunArtifact:
             deadline.check()
             directory.append_event({"event": "cell_started", "cell": cell})
             if axis == "adversarial":
+                from agentsec.observability.audit import MemoryAuditSink as _Sink
+
+                audit = _Sink()
                 score, notes, replay = await run_adversarial_cell(
-                    arm, repeats=settings.repeats
+                    arm, repeats=settings.repeats, audit=audit
                 )
                 report = CellReport(cell=cell, planner="adversarial", controls=arm.id)
                 report.authorization = score
                 document = report.as_document()
                 document["replay"] = replay
+                directory.append_audit(audit.records)
                 artifact.notes.extend(notes)
             else:
                 document = await _run_axis_a_arm(
