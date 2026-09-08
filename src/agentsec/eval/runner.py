@@ -222,7 +222,9 @@ class SuiteError(Exception):
 # --------------------------------------------------------------------------- Axis B
 
 
-async def run_adversarial_cell(arm: Arm, *, repeats: int) -> tuple[AuthorizationScore, list[str]]:
+async def run_adversarial_cell(
+    arm: Arm, *, repeats: int
+) -> tuple[AuthorizationScore, list[str], dict[str, Any]]:
     """One Axis-B cell: the compromised planner against one control stack.
 
     Uses the same ``ControlPipeline`` the real planner uses, configured per arm. The
@@ -237,10 +239,16 @@ async def run_adversarial_cell(arm: Arm, *, repeats: int) -> tuple[Authorization
     from agentsec.control.pipeline import ControlPipeline
     from agentsec.gateway.core import McpGateway, RecordingBackend
     from agentsec.gateway.registry import load_registry
+    from agentsec.observability.audit import MemoryAuditSink
+    from agentsec.observability.replay import reconstruct
 
     registry = load_registry()
     attempted = executed = reached = 0
     notes: list[str] = []
+    # One trail for the whole cell. The counters below are produced by the control path;
+    # the replay verdict is derived from the record that path left behind. Two routes to
+    # the same claim, and only one of them shares an author with the enforcement.
+    audit = MemoryAuditSink()
 
     applicable = [s for s in SCENARIOS if s.blocked_by is not Layer.BACKEND]
     if not arm.policy:
@@ -264,6 +272,7 @@ async def run_adversarial_cell(arm: Arm, *, repeats: int) -> tuple[Authorization
                 ),
                 minter=CapabilityMinter(key),
                 workflow_id=f"wf-{arm.id}",
+                audit_sink=audit,
             )
             # An arm without the approval gate is modelled by pre-approving every digest,
             # which is exactly what "no human in the loop" means. Removing the gate by
@@ -287,6 +296,16 @@ async def run_adversarial_cell(arm: Arm, *, repeats: int) -> tuple[Authorization
     if not applicable:
         notes.append(f"{arm.id}: no applicable scenarios; this cell measured nothing")
 
+    replay = reconstruct(audit.records)
+    if not replay.sound:
+        # Louder than a metric. The counters and the trail disagreeing means one of them is
+        # wrong, and there is no reading of that which is safe to leave in a footnote.
+        notes.append(
+            f"{arm.id}: REPLAY DISAGREES WITH THE COUNTERS - "
+            f"{len(replay.violations)} execution(s) the audit trail cannot justify: "
+            f"{[str(v) for v in replay.violations][:3]}"
+        )
+
     return (
         AuthorizationScore(
             attempted=attempted,
@@ -295,6 +314,7 @@ async def run_adversarial_cell(arm: Arm, *, repeats: int) -> tuple[Authorization
             trials=repeats * len(applicable),
         ),
         notes,
+        replay.summary(),
     )
 
 
@@ -537,11 +557,15 @@ def _plan_cells(settings: RunSettings) -> tuple[str, ...]:
     return tuple(cells)
 
 
-def _pipeline_factory(arm: Arm, registry: Any, policy: Any) -> Any:
+def _pipeline_factory(arm: Arm, registry: Any, policy: Any, audit: Any = None) -> Any:
     """Build a fresh pipeline per case, sharing nothing.
 
     State leaking between cases - a spent capability, an approved digest, a ledger entry -
     would make case N's result depend on case N-1's, and the corpus order is arbitrary.
+
+    ``audit`` is the one thing deliberately shared across cases in a cell: the trail is
+    per-cell so that replay can check the cell as a whole. Sharing it cannot leak
+    authorization state, because the trail is written to and never read by the pipeline.
     """
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
@@ -567,6 +591,7 @@ def _pipeline_factory(arm: Arm, registry: Any, policy: Any) -> Any:
             ),
             minter=CapabilityMinter(key),
             workflow_id=f"wf-{arm.id}",
+            audit_sink=audit,
         )
         if not arm.approval:
             pipeline.approved_digests.add("*")
@@ -589,6 +614,8 @@ async def _run_axis_a_arm(
     from agentsec.config import load_settings
     from agentsec.eval.axis_a import run_axis_a_cell
     from agentsec.gateway.registry import load_registry
+    from agentsec.observability.audit import MemoryAuditSink
+    from agentsec.observability.replay import reconstruct
 
     key = load_settings().anthropic_api_key
     provider = select_provider(
@@ -600,6 +627,10 @@ async def _run_axis_a_arm(
     )
     registry = load_registry()
     policy = await _policy_for(arm)
+    # One trail per cell, so replay checks the cell as a unit. This is an independent
+    # check of the same claim the counters make: the counters are produced by the control
+    # path, the verdict is derived from the record it left.
+    audit = MemoryAuditSink()
 
     def checkpoint(outcome: Any) -> None:
         # Written per case, not per cell. A cell holding twenty-two paid-for results in
@@ -617,7 +648,7 @@ async def _run_axis_a_arm(
         arm_id=arm.id,
         prompt_id=arm.prompt_id,
         provider=provider,
-        pipeline_factory=_pipeline_factory(arm, registry, policy),
+        pipeline_factory=_pipeline_factory(arm, registry, policy, audit),
         model=settings.model,
         cases=INJECTION_CASES,
         repeats=settings.repeats,
@@ -625,6 +656,7 @@ async def _run_axis_a_arm(
     )
     document = result.as_document()
     document["controls"] = arm.id
+    document["replay"] = reconstruct(audit.records).summary()
     return document
 
 
@@ -744,10 +776,13 @@ async def run_suite(settings: RunSettings) -> RunArtifact:
             deadline.check()
             directory.append_event({"event": "cell_started", "cell": cell})
             if axis == "adversarial":
-                score, notes = await run_adversarial_cell(arm, repeats=settings.repeats)
+                score, notes, replay = await run_adversarial_cell(
+                    arm, repeats=settings.repeats
+                )
                 report = CellReport(cell=cell, planner="adversarial", controls=arm.id)
                 report.authorization = score
                 document = report.as_document()
+                document["replay"] = replay
                 artifact.notes.extend(notes)
             else:
                 document = await _run_axis_a_arm(

@@ -59,6 +59,7 @@ from agentsec.gateway.core import DispatchRequest, GatewayResult, McpGateway
 from agentsec.gateway.ledger import operation_id
 from agentsec.gateway.registry import ToolRegistry, UnknownToolError
 from agentsec.log import get_logger
+from agentsec.observability.audit import AuditEventType, AuditSink, AuditTrail
 
 log = get_logger("agentsec.control.pipeline")
 
@@ -205,12 +206,18 @@ class ControlPipeline:
     workflow_id: str = "wf-local"
     environment: str = "local"
     capability_ttl_seconds: int = 60
+    audit_sink: AuditSink | None = None
+    """Where the audit trail goes. ``None`` records nothing, which keeps auditing opt-in
+    rather than a hidden cost on the several hundred control-path traversals the
+    evaluation performs per run."""
+
     approved_digests: set[str] = field(default_factory=set)
     """Digests an operator has approved. Empty by default, which is the safe default: an
     action needing approval and finding none is refused, not waved through."""
 
     async def run(self, state: SecurityAgentState) -> ControlOutcome:
         outcome = ControlOutcome(run_id=state.run_id)
+        trail = AuditTrail(self.audit_sink, run_id=state.run_id)
 
         planning = await self.planner.plan(state)
         outcome.planning_rejected = list(getattr(planning, "rejected", []))
@@ -226,8 +233,17 @@ class ControlPipeline:
             outcome.output_tokens += response.usage.output_tokens
             outcome.usd += response_usd(response)
 
+        trail.emit(
+            AuditEventType.PLAN_PROPOSED,
+            workflow_id=self.workflow_id,
+            actions=len(getattr(planning, "actions", ())),
+            rejected=len(outcome.planning_rejected),
+            injection_observed=outcome.injection_observed,
+            untrusted_items=state.untrusted_count,
+        )
+
         for index, action in enumerate(getattr(planning, "actions", ())):
-            outcome.attempts.append(await self._authorize_and_dispatch(state, action, index))
+            outcome.attempts.append(await self._authorize_and_dispatch(state, action, index, trail))
 
         log.info("control path complete", **outcome.summary())
         return outcome
@@ -235,10 +251,25 @@ class ControlPipeline:
     # ------------------------------------------------------------------ one action
 
     async def _authorize_and_dispatch(
-        self, state: SecurityAgentState, action: ProposedAction, occurrence: int
+        self,
+        state: SecurityAgentState,
+        action: ProposedAction,
+        occurrence: int,
+        trail: AuditTrail,
     ) -> Attempt:
         intent = self._compile(action)
         if isinstance(intent, Attempt):
+            # No digest yet - the registry refused to compile it - so this is recorded
+            # against the proposal rather than an action. A refusal before the digest
+            # exists is still something the trail has to be able to account for.
+            trail.emit(
+                AuditEventType.ACTION_REFUSED,
+                workflow_id=self.workflow_id,
+                tool=action.tool,
+                operation=action.operation,
+                outcome=intent.stage.value,
+                reason=intent.reason,
+            )
             return intent
 
         principal = self.principal or Principal(
@@ -254,6 +285,15 @@ class ControlPipeline:
         # inside the component it constrains is not a control.
         if not self._in_scope(state, action.resource):
             state.record_denial(f"{action.tool}.{action.operation}: resource out of scope")
+            trail.emit(
+                AuditEventType.ACTION_REFUSED,
+                workflow_id=self.workflow_id,
+                tool=action.tool,
+                operation=action.operation,
+                outcome=Stage.OUT_OF_SCOPE.value,
+                reason="resource outside the run's assigned scope",
+                resource=action.resource,
+            )
             return Attempt(
                 action=action,
                 stage=Stage.OUT_OF_SCOPE,
@@ -261,6 +301,17 @@ class ControlPipeline:
             )
 
         canonical = canonicalize(principal, intent, workflow_id=self.workflow_id)
+        trail.emit(
+            AuditEventType.ACTION_COMPILED,
+            action_digest=canonical.digest,
+            workflow_id=self.workflow_id,
+            principal=principal.id,
+            tool=intent.tool,
+            operation=intent.operation,
+            resource=str(intent.resource),
+            risk_class=str(intent.risk_class),
+            arguments=dict(intent.arguments),
+        )
 
         decision = await self.policy.evaluate(
             AuthorizationRequest(
@@ -271,6 +322,18 @@ class ControlPipeline:
                 registry_hash=self.registry.hash,
                 untrusted_context_count=state.untrusted_count,
             )
+        )
+
+        trail.emit(
+            AuditEventType.POLICY_DECIDED,
+            action_digest=canonical.digest,
+            workflow_id=self.workflow_id,
+            principal=principal.id,
+            tool=intent.tool,
+            operation=intent.operation,
+            outcome=str(getattr(decision.outcome, "value", decision.outcome)),
+            reason=decision.reason_code,
+            fail_closed=getattr(decision, "fail_closed", False),
         )
 
         if (
@@ -297,6 +360,17 @@ class ControlPipeline:
         )
         if needs_approval and canonical.digest not in self.approved_digests:
             state.record_denial(f"{intent.qualified_name}: awaiting human approval")
+            trail.emit(
+                AuditEventType.APPROVAL_REQUIRED,
+                action_digest=canonical.digest,
+                workflow_id=self.workflow_id,
+                tool=intent.tool,
+                operation=intent.operation,
+                outcome="pending",
+                reason="no approval for this exact action",
+                required_by_registry=definition.requires_approval,
+                required_by_policy=decision.outcome is PolicyOutcome.REQUIRE_APPROVAL,
+            )
             return Attempt(
                 action=action,
                 stage=Stage.APPROVAL_REQUIRED,
@@ -304,7 +378,30 @@ class ControlPipeline:
                 action_digest=canonical.digest,
             )
 
+        if needs_approval:
+            # Recorded even though the approval was granted elsewhere: replay checks that a
+            # granted approval precedes the execution, and an approval that never reaches
+            # the trail is indistinguishable from one that never happened.
+            trail.emit(
+                AuditEventType.APPROVAL_DECIDED,
+                action_digest=canonical.digest,
+                workflow_id=self.workflow_id,
+                tool=intent.tool,
+                operation=intent.operation,
+                outcome="granted",
+                reason="operator approved this exact digest",
+            )
+
         if self.minter is None:
+            trail.emit(
+                AuditEventType.DISPATCH_DENIED,
+                action_digest=canonical.digest,
+                workflow_id=self.workflow_id,
+                tool=intent.tool,
+                operation=intent.operation,
+                outcome=Stage.GATEWAY_DENIED.value,
+                reason="no capability minter configured",
+            )
             return Attempt(
                 action=action,
                 stage=Stage.GATEWAY_DENIED,
@@ -330,6 +427,19 @@ class ControlPipeline:
             registry_hash=self.registry.hash,
         )
 
+        trail.emit(
+            AuditEventType.CAPABILITY_MINTED,
+            action_digest=canonical.digest,
+            workflow_id=self.workflow_id,
+            principal=principal.id,
+            tool=intent.tool,
+            operation=intent.operation,
+            outcome="minted",
+            request_hash=request_hash,
+            ttl_seconds=self.capability_ttl_seconds,
+            scopes=sorted(self._scopes(intent)),
+        )
+
         result = await self.gateway.dispatch(
             DispatchRequest(
                 principal=principal,
@@ -340,7 +450,41 @@ class ControlPipeline:
                 run_id=state.run_id,
             )
         )
-        return self._as_attempt(action, canonical.digest, result)
+        attempt = self._as_attempt(action, canonical.digest, result)
+        if attempt.executed:
+            # The redemption happened inside the gateway. Recorded here because replay
+            # requires it to precede the execution, and because an execution event with no
+            # redemption before it is exactly the shape of the bug worth catching.
+            trail.emit(
+                AuditEventType.CAPABILITY_REDEEMED,
+                action_digest=canonical.digest,
+                workflow_id=self.workflow_id,
+                tool=intent.tool,
+                operation=intent.operation,
+                outcome="redeemed",
+            )
+            trail.emit(
+                AuditEventType.EXECUTED,
+                action_digest=canonical.digest,
+                workflow_id=self.workflow_id,
+                principal=principal.id,
+                tool=intent.tool,
+                operation=intent.operation,
+                outcome=attempt.stage.value,
+                reached_backend=attempt.reached_backend,
+            )
+        else:
+            trail.emit(
+                AuditEventType.DISPATCH_DENIED,
+                action_digest=canonical.digest,
+                workflow_id=self.workflow_id,
+                tool=intent.tool,
+                operation=intent.operation,
+                outcome=attempt.stage.value,
+                reason=attempt.reason,
+                reached_backend=attempt.reached_backend,
+            )
+        return attempt
 
     def _compile(self, action: ProposedAction) -> ActionIntent | Attempt:
         """Turn a proposal into an intent using the trusted registry.

@@ -56,6 +56,12 @@ jobs:
         # credential-requiring test cannot silently start costing money in CI.
         run: uv run pytest -q -m "not live" --cov --cov-report=term-missing
 
+      - name: README matches its evidence
+        # The README's headline number is generated from a committed artifact. This is
+        # what makes that sentence true rather than aspirational: it fails if the README
+        # has drifted from the published artifact, or if the artifact is not tracked.
+        run: uv run python -m agentsec.eval.report --check
+
   package:
     name: execution package integrity
     runs-on: ubuntu-latest

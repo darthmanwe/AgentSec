@@ -70,6 +70,8 @@ dev = [
 [project.scripts]
 agentsec = "agentsec.cli.main:main"
 "agentsec-eval" = "agentsec.eval.runner:main"
+"agentsec-report" = "agentsec.eval.report:main"
+"agentsec-replay" = "agentsec.observability.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -107,6 +109,14 @@ eval = "python -m agentsec.eval.runner --suite adversarial-planner"
 # Preflight checks plus the worst-case cost projection.
 "eval-preflight" = "python -m agentsec.eval.runner --axis real --preflight-only --repeats 3"
 "eval-runs" = "python -m agentsec.eval.runner --list-runs"
+# Regenerate the README results section from a published artifact (AS-040). `report-check`
+# runs in CI: a README that has drifted from its evidence is worse than one with no number.
+report = "python -m agentsec.eval.report"
+"report-write" = "python -m agentsec.eval.report --write"
+"report-check" = "python -m agentsec.eval.report --check"
+# Replay an audit trail and check the invariant against it (AS-041). Exits non-zero
+# on any execution the trail cannot justify, so it can gate a pipeline.
+replay = "python -m agentsec.observability.cli"
 "validate-corpus" = "python -c \"import json; from agentsec.eval.attacks import validate; print(json.dumps(validate(), indent=2))\""
 reap = "python -c \"from agentsec.sandbox import reap; r = reap(); print(f'reclaimed {r.total} sandbox artifacts')\""
 "compose-config" = "docker compose config --quiet"

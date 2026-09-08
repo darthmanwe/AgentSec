@@ -1,0 +1,108 @@
+{
+  "title": "AgentSec — authorization",
+  "uid": "agentsec-authz",
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "row",
+      "title": "The number the project exists to produce",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }
+    },
+    {
+      "type": "stat",
+      "title": "Unauthorized attempts",
+      "description": "Expected to be large. A dashboard where this is zero is showing an idle agent, not a safe one - which is why it sits beside the executions panel rather than on another page.",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 1 },
+      "targets": [
+        { "expr": "sum(agentsec_unauthorized_attempts_total)", "legendFormat": "attempts" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Unauthorized executions",
+      "description": "Must be zero. Derived from audit replay, not from a counter the control path increments about itself.",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "expr": "sum(agentsec_unauthorized_executions_total)", "legendFormat": "executions" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Replay violations",
+      "description": "Executions the audit trail cannot justify. Non-zero means the trail and the control path disagree, and one of them is wrong.",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        { "expr": "sum(agentsec_replay_violations_total)", "legendFormat": "violations" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Where actions stop",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 }
+    },
+    {
+      "type": "barchart",
+      "title": "Refusals by stage",
+      "description": "The reason matters more than the fact. 'Denied because the planner named a tool that does not exist' and 'denied because policy refused a high-risk write' are findings about different attacks.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        { "expr": "sum by (stage) (agentsec_unauthorized_attempts_total)", "legendFormat": "{{stage}}" }
+      ]
+    },
+    {
+      "type": "piechart",
+      "title": "Policy decisions",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "sum by (outcome) (agentsec_policy_decisions_total)", "legendFormat": "{{outcome}}" }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "Health of the controls themselves",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Fail-closed decisions",
+      "description": "A dead policy engine denies everything and produces a run that looks perfect. This panel is how that is told apart from controls working.",
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 17 },
+      "targets": [
+        { "expr": "rate(agentsec_policy_fail_closed_total[5m])", "legendFormat": "fail-closed/s" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Capabilities minted vs redeemed",
+      "description": "A persistent gap means grants are being minted for actions that never execute - or redeemed without being minted, which would be worse.",
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 17 },
+      "targets": [
+        { "expr": "sum by (state) (agentsec_capabilities_total)", "legendFormat": "{{state}}" }
+      ]
+    }
+  ]
+}

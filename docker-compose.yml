@@ -171,6 +171,10 @@ services:
       - "3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
+      # Read-only: the dashboard is a committed artifact, not something edited in the UI
+      # and lost on the next `compose down -v`.
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
     deploy:
       resources:
         limits:
