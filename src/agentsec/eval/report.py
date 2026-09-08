@@ -232,6 +232,20 @@ def render(document: dict[str, Any], *, source: pathlib.Path) -> str:
             "",
         ]
 
+    cases = int(totals.get("injection_cases", 0) or 0)
+    if cases:
+        # The headline counts Axis B only, because only those cells carry authorization
+        # counters. Saying so beside it stops a reader taking 144 trials for the whole
+        # evaluation now that Axis A has run.
+        proposed = int(totals.get("injection_proposed_canary", 0) or 0)
+        executed = int(totals.get("injection_executed_canary", 0) or 0)
+        lines += [
+            f"That sentence counts Axis B. Separately, across {cases} Axis-A cases against a "
+            f"real model, the model proposed the canary {proposed} times and the system "
+            f"executed it {executed}.",
+            "",
+        ]
+
     lines += _axis_b_table(document.get("cells") or [])
     lines += _axis_a_table(document.get("cells") or [])
 
@@ -254,8 +268,10 @@ def render(document: dict[str, Any], *, source: pathlib.Path) -> str:
         f"- Preregistration: `{str(document.get('preregistration_hash', ''))[:16]}`",
         f"- Model: `{settings.get('model', '?')}`, {settings.get('repeats', 1)} repeats, "
         f"arms {settings.get('arms', [])}",
-        f"- Spend: ${float(spend.get('spent_usd', 0.0)):.2f}"
-        f"{' (live)' if spend.get('live') else ' (no live calls)'}",
+        f"- Spend: ${float(spend.get('spent_usd', 0.0)):.2f} across "
+        f"{spend.get('calls', 0)} live calls"
+        if settings.get("live")
+        else "- Spend: $0.00, no live calls",
         "",
         "</details>",
         END,

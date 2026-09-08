@@ -837,7 +837,14 @@ async def run_suite(settings: RunSettings) -> RunArtifact:
         )
 
     artifact.status = status.value
-    artifact.spend = accountant.report() if settings.live else {"live": False, "spent_usd": 0.0}
+    # ``live`` explicitly on both branches. The accountant's own report does not carry it,
+    # so the live branch had no such key and anything reading ``spend["live"]`` concluded
+    # a $1.35 run had made no live calls.
+    artifact.spend = (
+        {**accountant.report(), "live": True}
+        if settings.live
+        else {"live": False, "spent_usd": 0.0}
+    )
     artifact.spend["cache_total_usd_all_runs"] = round(cache.total_usd(), 6)
     artifact.cache = cache.stats.as_row()
     artifact.retries = retry_log.as_row()

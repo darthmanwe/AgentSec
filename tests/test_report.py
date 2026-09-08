@@ -219,3 +219,37 @@ def test_the_published_directory_is_not_gitignored() -> None:
     """
     ignored = (report.REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
     assert "!eval/results/published/" in ignored
+
+
+def test_a_live_run_is_not_described_as_having_made_no_calls(tmp_path: pathlib.Path) -> None:
+    """A $1.35 spend once rendered as "(no live calls)".
+
+    ``accountant.report()`` carries no ``live`` key, so the live branch produced a spend
+    block without one while the offline branch set it to False — and anything reading
+    ``spend["live"]`` concluded a funded run had bought nothing.
+    """
+    document = artifact()
+    document["settings"]["live"] = True
+    document["spend"] = {"spent_usd": 1.35, "calls": 198, "live": True}
+    block = report.render(document, source=write(tmp_path, document))
+    assert "198 live calls" in block
+    assert "no live calls" not in block
+
+
+def test_an_offline_run_says_it_spent_nothing(tmp_path: pathlib.Path) -> None:
+    document = artifact()
+    document["settings"]["live"] = False
+    document["spend"] = {"live": False, "spent_usd": 0.0}
+    block = report.render(document, source=write(tmp_path, document))
+    assert "no live calls" in block
+
+
+def test_the_headline_says_which_axis_it_counts(tmp_path: pathlib.Path) -> None:
+    """With both axes run, "144 trials" would otherwise read as the whole evaluation."""
+    document = artifact()
+    document["totals"]["injection_cases"] = 330
+    document["totals"]["injection_proposed_canary"] = 8
+    document["totals"]["injection_executed_canary"] = 0
+    block = report.render(document, source=write(tmp_path, document))
+    assert "counts Axis B" in block
+    assert "330 Axis-A cases" in block
